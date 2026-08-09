@@ -1,0 +1,525 @@
+/* Ableton Live–style theme: flat mid-grey surfaces, 1px borders, orange accent. */
+:root {
+  --desk: #a8a8a8;
+  --surface: #c3c3c3;
+  --surface-hi: #d4d4d4;
+  --titlebar: #b0b0b0;
+  --display: #d9d9d9;
+  --border: #7d7d7d;
+  --border-soft: #949494;
+  --text: #1a1a1a;
+  --text-dim: #4d4d4d;
+  --text-faint: #6e6e6e;
+  --accent: #ffb000;
+  --accent-deep: #f09000;
+  --rec: #ff3a30;
+  --meter: #4bd151;
+  --font: 'Suisse Intl', system-ui, -apple-system, 'Helvetica Neue', Helvetica,
+    Arial, sans-serif;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--desk);
+  overflow-x: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* ---------- Stage layout ---------- */
+
+.stage {
+  /* Auto margins center the stage in the viewport but collapse to 0 once the
+     content overflows, so the top stays reachable on short screens. */
+  flex: 0 0 auto;
+  width: min(1180px, 100%);
+  margin: auto;
+  padding: 12px 12px 16px;
+}
+
+.detector {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* ---------- Device panels ---------- */
+
+.device {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.device-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--titlebar);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text);
+  user-select: none;
+}
+
+.header-right {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
+
+/* ---------- Note panel ---------- */
+
+.note-display {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 132px;
+  margin: 10px 10px 0;
+  padding: 8px 10px;
+  background: var(--display);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+}
+
+.note-name {
+  font-size: clamp(56px, 8vw, 84px);
+  font-weight: 500;
+  /* Suisse Intl is already tightly fitted, so it needs less tracking than the
+     geometric face this was originally set for. */
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+  color: var(--text-faint);
+  transition: color 0.12s ease;
+}
+
+.note-display.voiced .note-name {
+  color: var(--note-color, var(--accent-deep));
+}
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.control-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.cents {
+  margin: 12px 10px 0;
+}
+
+.cents-track {
+  position: relative;
+  height: 26px;
+  background: var(--display);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cents-marks {
+  position: absolute;
+  inset: 2px 6px auto;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.cents-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--text-dim);
+}
+
+.cents-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  transition: left 0.08s linear;
+}
+
+.cents-value {
+  margin: 4px 0 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.level-block {
+  margin: 12px 10px 14px;
+}
+
+.level {
+  height: 8px;
+  background: var(--display);
+  border: 1px solid var(--border-soft);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.level-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--meter);
+  transition: width 0.08s linear;
+}
+
+/* Listen toggle styled like Live's record-arm button. */
+.listen {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: auto 10px 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  background: var(--titlebar);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.listen:hover:not(:disabled) {
+  background: #bababa;
+}
+
+.listen:active:not(:disabled) {
+  background: #a5a5a5;
+}
+
+.listen:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.listen.active {
+  background: var(--rec);
+  border-color: #c22a22;
+  color: #fff;
+}
+
+.listen-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rec);
+  flex: none;
+}
+
+.listen.active .listen-dot {
+  background: #fff;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ---------- Scope + instrument ---------- */
+
+.scope {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.trail {
+  display: block;
+  width: 100%;
+  height: clamp(340px, 46vh, 540px);
+}
+
+.instrument {
+  min-width: 0;
+}
+
+.instrument-controls {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px 0;
+}
+
+.octave-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.octave-control strong {
+  color: var(--text);
+}
+
+.octave-control button {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--titlebar);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+  font: 500 13px/1 var(--font);
+}
+
+.octave-control button:hover {
+  background: #bababa;
+}
+
+.octave-control button:active {
+  background: var(--accent);
+}
+
+/* renderKeyboard() also adds .keyboard to this element, so one box is both the
+   frame around the keys and the positioning context for the two key rows. It
+   must stay block-level: as a flex container it collapsed the white-key row to
+   its (zero) content width. The height is fixed so the keys stay piano-shaped
+   even when the note panel makes this row much taller. */
+.keyboard-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  height: 132px;
+  margin: 6px 8px 0;
+  padding: 1px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.keys-white {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: 100%;
+}
+
+.key {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.key.white {
+  background: #f4f4f4;
+  /* A border rather than a grid gap keeps every white key exactly 1/n of the
+     row, so the percentage offsets of the black keys land on the seams. */
+  border-right: 1px solid var(--border);
+}
+
+.key.white:last-child {
+  border-right: 0;
+}
+
+.key.black {
+  position: absolute;
+  top: 0;
+  /* renderKeyboard sets --black-key-width from the actual white-key count. */
+  width: var(--black-key-width, 2.8%);
+  height: 100%;
+  transform: translateX(-50%);
+  background: #2e2e2e;
+}
+
+.keys-black {
+  position: absolute;
+  /* Inset by the frame so this layer shares the white row's box and the black
+     keys' percentage offsets land on the same seams. */
+  inset: 1px 1px 40%;
+  pointer-events: none;
+}
+
+.keys-black .key {
+  pointer-events: auto;
+}
+
+.key.white.detected {
+  background: #ffd98f;
+}
+
+.key.black.detected {
+  background: #8a6320;
+}
+
+.key.white.played {
+  background: var(--accent);
+}
+
+.key.black.played {
+  background: var(--accent-deep);
+}
+
+.shortcut-label {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  transform: translateX(-50%);
+  color: var(--text);
+  background: var(--accent);
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.key.black .shortcut-label {
+  bottom: 6px;
+}
+
+.key-label {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.keyboard-help {
+  /* Auto top margin parks the hint on the panel's bottom edge, so the space the
+     taller note panel adds to this row sits below the keys rather than in them. */
+  margin: auto 8px 10px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+kbd {
+  padding: 0 4px;
+  font: inherit;
+  background: var(--titlebar);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+}
+
+.status {
+  margin: 0;
+  padding: 8px 10px 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.status.listening {
+  color: #1c7c2d;
+}
+
+.status.error {
+  color: #c03737;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 860px) {
+  .detector {
+    grid-template-columns: 1fr;
+  }
+
+  .trail {
+    height: clamp(220px, 34vh, 320px);
+  }
+
+  .keyboard-wrap {
+    height: 108px;
+  }
+}
+
+/* Phone widths make each white key too narrow for a shortcut badge, and the
+   shortcuts are useless without a physical keyboard anyway. */
+@media (max-width: 620px) {
+  .shortcut-label {
+    display: none;
+  }
+
+  .key-label {
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Voicetool — sing into your mic and see notes detected live with SwiftF0."
+    />
+    <title>Voicetool — live note detection</title>
+  </head>
+  <body>
+    <div id="app">
+      <main class="stage">
+        <section class="detector" aria-live="polite">
+          <div class="scope device">
+            <canvas id="trail" class="trail" width="1200" height="320"></canvas>
+          </div>
+
+          <div class="note-panel device">
+            <p class="status" id="status">Loading pitch model…</p>
+            <div class="note-display" id="noteDisplay">
+              <span class="note-name" id="noteName">—</span>
+              <span class="note-meta">
+                <span id="noteHz">— Hz</span>
+                <span class="dot" aria-hidden="true"></span>
+                <span id="noteConf">—%</span>
+              </span>
+            </div>
+
+            <div class="cents" aria-label="Tuning cents">
+              <span class="control-label">TUNE</span>
+              <div class="cents-track">
+                <div class="cents-marks" aria-hidden="true">
+                  <span>-50</span>
+                  <span>0</span>
+                  <span>+50</span>
+                </div>
+                <div class="cents-center" aria-hidden="true"></div>
+                <div class="cents-needle" id="centsNeedle"></div>
+              </div>
+              <p class="cents-value" id="centsValue">0 ¢</p>
+            </div>
+
+            <div class="level-block">
+              <span class="control-label">INPUT LEVEL</span>
+              <div class="level" aria-hidden="true">
+                <div class="level-fill" id="levelFill"></div>
+              </div>
+            </div>
+
+            <button type="button" class="listen" id="listenBtn" disabled>
+              <span class="listen-dot" aria-hidden="true"></span>
+              <span id="listenLabel">Start listening</span>
+            </button>
+          </div>
+
+          <section class="instrument device" aria-label="Playable synthesizer keyboard">
+            <div class="instrument-header device-header">
+              <span>Keys</span>
+              <span class="header-right">A W S E D F T G Y H U J K</span>
+            </div>
+            <div class="instrument-controls">
+              <div class="octave-control">
+                <button type="button" id="octaveDown" aria-label="Octave down">−</button>
+                <span>OCT <strong id="octaveValue">3</strong></span>
+                <button type="button" id="octaveUp" aria-label="Octave up">+</button>
+              </div>
+            </div>
+            <div id="keyboard" class="keyboard-wrap"></div>
+            <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Click or touch keys to play</p>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
