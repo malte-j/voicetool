@@ -130,7 +130,6 @@ a {
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--text-dim);
-  text-transform: uppercase;
 }
 
 .cents {
@@ -203,7 +202,7 @@ a {
   transition: width 0.08s linear;
 }
 
-/* Listen toggle styled like Live's record-arm button. */
+/* Listen toggle: primary when idle (start), muted when listening (stop). */
 .listen {
   appearance: none;
   display: inline-flex;
@@ -214,18 +213,19 @@ a {
   padding: 7px 10px;
   cursor: pointer;
   font: inherit;
-  color: var(--text);
-  background: var(--titlebar);
-  border: 1px solid var(--border);
+  color: #fff;
+  background: var(--rec);
+  border: 1px solid #c22a22;
   border-radius: 2px;
 }
 
-.listen:hover:not(:disabled) {
-  background: #bababa;
+.listen:hover:not(:disabled):not(.active) {
+  background: #d93a32;
+  border-color: #b8251e;
 }
 
-.listen:active:not(:disabled) {
-  background: #a5a5a5;
+.listen:active:not(:disabled):not(.active) {
+  background: #c22a22;
 }
 
 .listen:disabled {
@@ -234,36 +234,36 @@ a {
 }
 
 .listen.active {
-  background: var(--rec);
-  border-color: #c22a22;
-  color: #fff;
+  color: var(--text);
+  background: var(--titlebar);
+  border-color: var(--border);
+}
+
+.listen.active:hover:not(:disabled) {
+  background: #bababa;
+}
+
+.listen.active:active:not(:disabled) {
+  background: #a5a5a5;
 }
 
 .listen.error {
   color: #c03737;
+  background: var(--titlebar);
+  border-color: var(--border);
 }
 
 .listen-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--rec);
+  background: #fff;
   flex: none;
 }
 
 .listen.active .listen-dot {
-  background: #fff;
-  animation: pulse 1.1s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
+  border-radius: 1px;
+  background: var(--rec);
 }
 
 /* ---------- Scope + instrument ---------- */
@@ -280,16 +280,31 @@ a {
 }
 
 .instrument {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
+  min-height: 0;
+  align-self: stretch;
 }
 
 .instrument-controls {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 8px 10px;
+}
+
+.instrument-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
   margin-top: auto;
-  padding: 8px 8px 10px;
 }
 
 .instrument-settings,
@@ -324,7 +339,6 @@ a {
   align-items: center;
   gap: 6px;
   color: var(--text-dim);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
@@ -361,7 +375,6 @@ a {
   position: relative;
   flex: 0 0 auto;
   height: 132px;
-  margin: 6px 8px 0;
   padding: 1px;
   background: var(--border);
   border-radius: 2px;
@@ -436,10 +449,6 @@ a {
   background: var(--accent-deep);
 }
 
-.key.target {
-  box-shadow: inset 0 0 0 3px #2f6fed;
-}
-
 .key.white.achieved,
 .key.black.achieved {
   background: var(--meter);
@@ -484,8 +493,34 @@ a {
   font-size: 10px;
 }
 
+.instrument-credit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  color: var(--text-faint);
+  font-size: 10px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.instrument-credit p {
+  margin: 0;
+}
+
+.instrument-credit p + p {
+  margin-top: 4px;
+}
+
+.instrument-credit a {
+  color: inherit;
+  text-decoration: none;
+  pointer-events: auto;
+}
+
 .target-status {
-  margin: 3px 0 0;
+  margin: 0;
   color: var(--text-dim);
   font-size: 10px;
   font-variant-numeric: tabular-nums;

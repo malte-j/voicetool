@@ -1,0 +1,22 @@
+{
+  "name": "voicetool",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "postinstall": "node scripts/copy-ort-assets.mjs",
+    "predev": "node scripts/copy-ort-assets.mjs",
+    "prebuild": "node scripts/copy-ort-assets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.27.0"
+  },
+  "description": "Live singing note detector powered by SwiftF0"
+}

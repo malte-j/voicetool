@@ -29,7 +29,7 @@
             </div>
 
             <div class="cents" aria-label="Tuning cents">
-              <span class="control-label">TUNE</span>
+              <span class="control-label">Tune</span>
               <div class="cents-track">
                 <div class="cents-marks" aria-hidden="true">
                   <span>-50</span>
@@ -43,7 +43,7 @@
             </div>
 
             <div class="level-block">
-              <span class="control-label">INPUT LEVEL</span>
+              <span class="control-label">Input level</span>
               <div class="level" aria-hidden="true">
                 <div class="level-fill" id="levelFill"></div>
               </div>
@@ -55,23 +55,29 @@
             </button>
           </div>
 
-          <section class="instrument device" aria-label="Playable synthesizer keyboard">
+          <section class="instrument" aria-label="Playable synthesizer keyboard">
             <div id="keyboard" class="keyboard-wrap"></div>
-            <div class="instrument-controls">
-              <div>
-                <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Play a key to set your target</p>
-                <p class="target-status" id="targetStatus"></p>
+            <div class="instrument-controls device">
+              <p class="target-status" id="targetStatus"></p>
+              <div class="instrument-credit">
+                <p>voicetool by <a href="https://malte.ws">malte</a></p>
+                <p>
+                  <a href="https://github.com/lars76/swift-f0/">voice detection using SwiftF0 by Lars Nieradzik</a>
+                </p>
               </div>
-              <div class="instrument-settings">
-                <label class="hold-control">
-                  HOLD
-                  <input type="number" id="holdSeconds" min="0.5" max="10" step="0.5" value="2" aria-label="Seconds to hold target note">
-                  SEC
-                </label>
-                <div class="octave-control">
-                  <button type="button" id="octaveDown" aria-label="Octave down">−</button>
-                  <span>OCT <strong id="octaveValue">3</strong></span>
-                  <button type="button" id="octaveUp" aria-label="Octave up">+</button>
+              <div class="instrument-footer">
+                <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave</p>
+                <div class="instrument-settings">
+                  <label class="hold-control">
+                    Hold
+                    <input type="number" id="holdSeconds" min="0.5" max="10" step="0.5" value="2" aria-label="Seconds to hold target note">
+                    sec
+                  </label>
+                  <div class="octave-control">
+                    <button type="button" id="octaveDown" aria-label="Octave down">−</button>
+                    <span>Oct <strong id="octaveValue">3</strong></span>
+                    <button type="button" id="octaveUp" aria-label="Octave up">+</button>
+                  </div>
                 </div>
               </div>
             </div>

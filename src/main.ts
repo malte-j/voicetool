@@ -125,7 +125,7 @@ function showPlayedNote(midi: number): void {
   noteDisplayEl.classList.add('voiced')
   noteNameEl.textContent = formatNote(note)
   noteHzEl.textContent = `${note.hz.toFixed(1)} Hz`
-  noteConfEl.textContent = 'KEYBOARD'
+  noteConfEl.textContent = 'Keyboard'
   centsNeedleEl.style.left = '50%'
   centsValueEl.textContent = '0 ¢'
   setTuningColor(0)
@@ -332,7 +332,7 @@ async function startListening(): Promise<void> {
     })
 
     listening = true
-    setListenLabel('Stop listening', 'listening')
+    setListenLabel('stop listening', 'listening')
 
     if (inferTimer != null) window.clearInterval(inferTimer)
     inferTimer = window.setInterval(() => {
@@ -357,7 +357,7 @@ async function stopListening(): Promise<void> {
     inferTimer = null
   }
   await capture.stop()
-  setListenLabel('Start listening')
+  setListenLabel('start listening')
   levelFillEl.style.width = '0%'
   targetHeldSince = null
   setVoicedUi(null)
@@ -467,7 +467,7 @@ async function boot(): Promise<void> {
   try {
     setListenLabel('Loading F0 model…')
     await onnx.initialize()
-    setListenLabel('Start listening')
+    setListenLabel('start listening')
     listenBtn.disabled = false
   } catch (err) {
     console.error(err)
