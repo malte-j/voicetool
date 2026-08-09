@@ -79,27 +79,6 @@ a {
   overflow: hidden;
 }
 
-.device-header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 24px;
-  padding: 0 8px;
-  background: var(--titlebar);
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text);
-  user-select: none;
-}
-
-.header-right {
-  margin-left: auto;
-  font-weight: 400;
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-}
-
 /* ---------- Note panel ---------- */
 
 .note-display {
@@ -260,6 +239,10 @@ a {
   color: #fff;
 }
 
+.listen.error {
+  color: #c03737;
+}
+
 .listen-dot {
   width: 9px;
   height: 9px;
@@ -302,8 +285,11 @@ a {
 
 .instrument-controls {
   display: flex;
-  justify-content: flex-end;
-  padding: 6px 8px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding: 8px 8px 10px;
 }
 
 .octave-control {
@@ -456,9 +442,7 @@ a {
 }
 
 .keyboard-help {
-  /* Auto top margin parks the hint on the panel's bottom edge, so the space the
-     taller note panel adds to this row sits below the keys rather than in them. */
-  margin: auto 8px 10px;
+  margin: 0;
   color: var(--text-faint);
   font-size: 10px;
 }
@@ -469,22 +453,6 @@ kbd {
   background: var(--titlebar);
   border: 1px solid var(--border-soft);
   border-radius: 2px;
-}
-
-.status {
-  margin: 0;
-  padding: 8px 10px 0;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-dim);
-}
-
-.status.listening {
-  color: #1c7c2d;
-}
-
-.status.error {
-  color: #c03737;
 }
 
 /* ---------- Responsive ---------- */

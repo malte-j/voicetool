@@ -19,7 +19,6 @@
           </div>
 
           <div class="note-panel device">
-            <p class="status" id="status">Loading pitch model…</p>
             <div class="note-display" id="noteDisplay">
               <span class="note-name" id="noteName">—</span>
               <span class="note-meta">
@@ -52,24 +51,20 @@
 
             <button type="button" class="listen" id="listenBtn" disabled>
               <span class="listen-dot" aria-hidden="true"></span>
-              <span id="listenLabel">Start listening</span>
+              <span id="listenLabel">Loading F0 model…</span>
             </button>
           </div>
 
           <section class="instrument device" aria-label="Playable synthesizer keyboard">
-            <div class="instrument-header device-header">
-              <span>Keys</span>
-              <span class="header-right">A W S E D F T G Y H U J K</span>
-            </div>
+            <div id="keyboard" class="keyboard-wrap"></div>
             <div class="instrument-controls">
+              <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Click or touch keys to play</p>
               <div class="octave-control">
                 <button type="button" id="octaveDown" aria-label="Octave down">−</button>
                 <span>OCT <strong id="octaveValue">3</strong></span>
                 <button type="button" id="octaveUp" aria-label="Octave up">+</button>
               </div>
             </div>
-            <div id="keyboard" class="keyboard-wrap"></div>
-            <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Click or touch keys to play</p>
           </section>
         </section>
       </main>
