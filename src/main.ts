@@ -26,6 +26,7 @@ const WINDOW_SAMPLES = Math.round(TARGET_SAMPLE_RATE * WINDOW_SECONDS)
 const INFER_EVERY_MS = 70
 const CONFIDENCE_THRESHOLD = 0.85
 const MIN_AUDIO_SAMPLES = 256
+const DEFAULT_TARGET_HOLD_SECONDS = 2
 
 const noteDisplayEl = document.querySelector<HTMLDivElement>('#noteDisplay')!
 const noteNameEl = document.querySelector<HTMLSpanElement>('#noteName')!
@@ -41,6 +42,8 @@ const keyboardEl = document.querySelector<HTMLDivElement>('#keyboard')!
 const octaveDownBtn = document.querySelector<HTMLButtonElement>('#octaveDown')!
 const octaveUpBtn = document.querySelector<HTMLButtonElement>('#octaveUp')!
 const octaveValueEl = document.querySelector<HTMLElement>('#octaveValue')!
+const targetStatusEl = document.querySelector<HTMLParagraphElement>('#targetStatus')!
+const holdSecondsInput = document.querySelector<HTMLInputElement>('#holdSeconds')!
 
 const onnx = new ONNXService('model.onnx')
 const capture = new AudioCapture()
@@ -55,6 +58,10 @@ let smoothedCents = 0
 let holdUntil = 0
 let lastNote: DetectedNote | null = null
 let keyboardOctave = 3
+let targetMidi: number | null = null
+let targetHeldSince: number | null = null
+let targetCompleted = false
+let suppressDetectionUntil = 0
 const heldComputerKeys = new Map<string, number>()
 const heldPointerNotes = new Set<number>()
 
@@ -125,7 +132,72 @@ function showPlayedNote(midi: number): void {
   trail.push(note.hz, true, { snap: true })
 }
 
+function targetName(midi: number): string {
+  return formatNote(analyzePitch(midiToHz(midi), 1))
+}
+
+function targetHoldSeconds(): number {
+  const value = holdSecondsInput.valueAsNumber
+  return Number.isFinite(value) ? Math.max(0.5, Math.min(10, value)) : DEFAULT_TARGET_HOLD_SECONDS
+}
+
+function targetPrompt(midi: number): string {
+  return `Target ${targetName(midi)} · sing and hold for ${targetHoldSeconds().toFixed(1)}s`
+}
+
+function selectTarget(midi: number): void {
+  keyboardEl.querySelectorAll('.key.target, .key.achieved').forEach((key) => {
+    key.classList.remove('target', 'achieved')
+  })
+  targetMidi = midi
+  targetHeldSince = null
+  targetCompleted = false
+  setKeyState(keyboardEl, midi, 'target', true)
+  targetStatusEl.textContent = targetPrompt(midi)
+}
+
+function updateTargetProgress(note: DetectedNote | null): void {
+  if (targetMidi == null || targetCompleted) return
+
+  const targetIsPlaying =
+    heldPointerNotes.has(targetMidi) ||
+    [...heldComputerKeys.values()].includes(targetMidi)
+  const matchesTarget = note != null && Math.round(note.midi) === targetMidi
+
+  if (!matchesTarget || targetIsPlaying) {
+    targetHeldSince = null
+    targetStatusEl.textContent = targetPrompt(targetMidi)
+    return
+  }
+
+  const now = performance.now()
+  targetHeldSince ??= now
+  const heldMs = now - targetHeldSince
+  const targetHoldMs = targetHoldSeconds() * 1000
+  const remainingSeconds = Math.max(0, (targetHoldMs - heldMs) / 1000)
+  targetStatusEl.textContent =
+    `Target ${targetName(targetMidi)} · ${remainingSeconds.toFixed(1)}s`
+
+  if (heldMs < targetHoldMs) return
+
+  targetCompleted = true
+  suppressDetectionUntil = Number.POSITIVE_INFINITY
+  void synth.playSuccessSound().then((durationSeconds) => {
+    // Ignore the sound itself plus one analysis window, so its trailing audio
+    // cannot appear as a detected note.
+    suppressDetectionUntil =
+      performance.now() + durationSeconds * 1000 + WINDOW_SECONDS * 1000 + 200
+  })
+  const seconds = targetHoldSeconds()
+  targetStatusEl.textContent =
+    `${targetName(targetMidi)} held for ${seconds} ${seconds === 1 ? 'second' : 'seconds'} ✓`
+  keyboardEl
+    .querySelector(`.key[data-midi="${targetMidi}"]`)
+    ?.classList.add('achieved')
+}
+
 function playNote(midi: number): void {
+  selectTarget(midi)
   synth.noteOn(midi)
   setKeyState(keyboardEl, midi, 'played', true)
   showPlayedNote(midi)
@@ -141,6 +213,14 @@ function setKeyboardOctave(next: number): void {
   octaveValueEl.textContent = String(keyboardOctave)
   const base = (keyboardOctave + 1) * 12
   renderKeyboard(keyboardEl, 48, 84, base)
+  if (targetMidi != null) {
+    setKeyState(keyboardEl, targetMidi, 'target', true)
+    if (targetCompleted) {
+      keyboardEl
+        .querySelector(`.key[data-midi="${targetMidi}"]`)
+        ?.classList.add('achieved')
+    }
+  }
   // Keep the scope looking at the octave you can play.
   trail.setOctave(base)
 }
@@ -209,9 +289,21 @@ async function runInference(): Promise<void> {
   const level = ring.peak(Math.min(2048, ring.length))
   levelFillEl.style.width = `${Math.min(100, level * 220)}%`
 
+  if (performance.now() < suppressDetectionUntil) {
+    setVoicedUi(null)
+    trail.push(null, false)
+    return
+  }
+
   try {
     const result = await onnx.runInference(normalize(window))
+    if (performance.now() < suppressDetectionUntil) {
+      setVoicedUi(null)
+      trail.push(null, false)
+      return
+    }
     const note = pickLatestVoiced(result.pitch_hz, result.confidence)
+    updateTargetProgress(note)
     setVoicedUi(note)
     trail.push(note?.hz ?? null, note != null)
   } catch (err) {
@@ -232,6 +324,7 @@ async function startListening(): Promise<void> {
     trail.clear()
     smoothedCents = 0
     lastNote = null
+    targetHeldSince = null
 
     await capture.start((chunk) => {
       ring.push(chunk)
@@ -266,6 +359,7 @@ async function stopListening(): Promise<void> {
   await capture.stop()
   setListenLabel('Start listening')
   levelFillEl.style.width = '0%'
+  targetHeldSince = null
   setVoicedUi(null)
 }
 
@@ -337,6 +431,16 @@ keyboardEl.addEventListener('pointerup', releasePointerNote)
 keyboardEl.addEventListener('pointercancel', releasePointerNote)
 octaveDownBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave - 1))
 octaveUpBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave + 1))
+holdSecondsInput.addEventListener('change', () => {
+  const seconds = targetHoldSeconds()
+  holdSecondsInput.value = String(seconds)
+  targetHeldSince = null
+  targetCompleted = false
+  keyboardEl.querySelectorAll('.key.achieved').forEach((key) => {
+    key.classList.remove('achieved')
+  })
+  if (targetMidi != null) targetStatusEl.textContent = targetPrompt(targetMidi)
+})
 
 window.addEventListener('blur', () => {
   heldComputerKeys.clear()

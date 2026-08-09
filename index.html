@@ -58,11 +58,21 @@
           <section class="instrument device" aria-label="Playable synthesizer keyboard">
             <div id="keyboard" class="keyboard-wrap"></div>
             <div class="instrument-controls">
-              <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Click or touch keys to play</p>
-              <div class="octave-control">
-                <button type="button" id="octaveDown" aria-label="Octave down">−</button>
-                <span>OCT <strong id="octaveValue">3</strong></span>
-                <button type="button" id="octaveUp" aria-label="Octave up">+</button>
+              <div>
+                <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave · Play a key to set your target</p>
+                <p class="target-status" id="targetStatus"></p>
+              </div>
+              <div class="instrument-settings">
+                <label class="hold-control">
+                  HOLD
+                  <input type="number" id="holdSeconds" min="0.5" max="10" step="0.5" value="2" aria-label="Seconds to hold target note">
+                  SEC
+                </label>
+                <div class="octave-control">
+                  <button type="button" id="octaveDown" aria-label="Octave down">−</button>
+                  <span>OCT <strong id="octaveValue">3</strong></span>
+                  <button type="button" id="octaveUp" aria-label="Octave up">+</button>
+                </div>
               </div>
             </div>
           </section>
