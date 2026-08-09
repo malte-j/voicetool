@@ -16,6 +16,7 @@
   --meter: #4bd151;
   --font: 'Suisse Intl', system-ui, -apple-system, 'Helvetica Neue', Helvetica,
     Arial, sans-serif;
+  --keyboard-height: 132px;
   color-scheme: light;
 }
 
@@ -86,12 +87,14 @@ a {
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  min-height: 132px;
-  margin: 10px 10px 0;
-  padding: 8px 10px;
+  flex: none;
+  height: var(--keyboard-height);
+  margin: 0;
+  padding: 0 10px 8px;
   background: var(--display);
   border: 1px solid var(--border-soft);
-  border-radius: 2px;
+  border-width: 0 0 1px;
+  border-radius: 0;
 }
 
 .note-name {
@@ -374,7 +377,7 @@ a {
 .keyboard-wrap {
   position: relative;
   flex: 0 0 auto;
-  height: 132px;
+  height: var(--keyboard-height);
   padding: 1px;
   background: var(--border);
   border-radius: 2px;
@@ -537,16 +540,16 @@ kbd {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 860px) {
+  :root {
+    --keyboard-height: 108px;
+  }
+
   .detector {
     grid-template-columns: 1fr;
   }
 
   .trail {
     height: clamp(220px, 34vh, 320px);
-  }
-
-  .keyboard-wrap {
-    height: 108px;
   }
 }
 

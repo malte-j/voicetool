@@ -1,3 +1,5 @@
+> **Disclaimer:** This project is 100% AI-generated.
+
 # Voicetool
 
 Interactive browser app that detects musical notes as you sing — powered by [SwiftF0](https://github.com/lars76/swift-f0) running client-side via ONNX Runtime Web.
