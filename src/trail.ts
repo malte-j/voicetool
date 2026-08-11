@@ -569,7 +569,8 @@ function octaveHigh(baseMidi: number): number {
   return Math.min(MODEL_MIDI_MAX, baseMidi + 12 + RANGE_PAD)
 }
 
-function tickStep(span: number, w: number): number {
+/** Time-gridline spacing that keeps roughly `TICK_TARGET_PX` between rules. */
+export function tickStep(span: number, w: number): number {
   const wanted = (span / Math.max(w, 1)) * TICK_TARGET_PX
   return TICK_STEPS.find((step) => step >= wanted) ?? TICK_STEPS[TICK_STEPS.length - 1]
 }

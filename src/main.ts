@@ -7,6 +7,8 @@ import {
   renderKeyboard,
   setKeyState,
 } from './keyboard'
+import { HarmonicTrail, type RecordedHarmonics } from './harmonicTrail'
+import { analyzeHarmonics } from './harmonics'
 import { ONNXService } from './onnxService'
 import {
   MODEL_FMAX,
@@ -44,6 +46,7 @@ const levelFillEl = document.querySelector<HTMLDivElement>('#levelFill')!
 const listenBtn = document.querySelector<HTMLButtonElement>('#listenBtn')!
 const listenLabel = document.querySelector<HTMLSpanElement>('#listenLabel')!
 const trailCanvas = document.querySelector<HTMLCanvasElement>('#trail')!
+const harmonicCanvas = document.querySelector<HTMLCanvasElement>('#harmonicTrail')!
 const keyboardEl = document.querySelector<HTMLDivElement>('#keyboard')!
 const octaveDownBtn = document.querySelector<HTMLButtonElement>('#octaveDown')!
 const octaveUpBtn = document.querySelector<HTMLButtonElement>('#octaveUp')!
@@ -63,6 +66,7 @@ const onnx = new ONNXService('model.onnx')
 const capture = new AudioCapture()
 const ring = new SampleRingBuffer(TARGET_SAMPLE_RATE * 2)
 const trail = new PitchTrail(trailCanvas, 8)
+const harmonics = new HarmonicTrail(harmonicCanvas, 8)
 const synth = new Synth()
 const player = new RecordingPlayer()
 
@@ -102,6 +106,13 @@ function setTuningColor(cents: number | null): void {
   const color = tuningColor(cents)
   noteDisplayEl.style.setProperty('--note-color', color)
   centsNeedleEl.style.background = color
+}
+
+/** Counts the harmonics in the same window the pitch was read from. */
+function pushHarmonics(samples: Float32Array | null, note: DetectedNote | null): void {
+  harmonics.push(
+    samples && note ? analyzeHarmonics(samples, note.hz, TARGET_SAMPLE_RATE) : null,
+  )
 }
 
 function setVoicedUi(note: DetectedNote | null): void {
@@ -197,15 +208,18 @@ function updateTransport(): void {
 function movePlayhead(seconds: number): void {
   trail.setPlayhead(seconds)
   const at = trail.playheadSeconds
+  harmonics.setPlayhead(at)
   player.seek(at)
   showPlayheadNote(trail.pointAt(at))
   updateTransport()
 }
 
-function openTake(recording: RecordedTrail): void {
+function openTake(recording: RecordedTrail, harmonicTake: RecordedHarmonics): void {
   trail.showRecording(recording)
+  harmonics.showRecording(harmonicTake)
   transportEl.hidden = false
   trailCanvas.classList.add('scrubbable')
+  harmonicCanvas.classList.add('scrubbable')
   shownPlayheadMidi = undefined
   showPlayheadNote(trail.pointAt(0))
   updateTransport()
@@ -216,8 +230,10 @@ function closeTake(): void {
   player.pause()
   player.unload()
   trail.closeRecording()
+  harmonics.closeRecording()
   transportEl.hidden = true
   trailCanvas.classList.remove('scrubbable')
+  harmonicCanvas.classList.remove('scrubbable')
   scrubPointer = null
   resumeAfterScrub = false
   shownPlayheadMidi = undefined
@@ -386,6 +402,7 @@ async function runInference(): Promise<void> {
 
   if (performance.now() < suppressDetectionUntil) {
     setVoicedUi(null)
+    pushHarmonics(null, null)
     trail.push(null, false)
     return
   }
@@ -394,10 +411,12 @@ async function runInference(): Promise<void> {
     const result = await onnx.runInference(normalize(window))
     if (performance.now() < suppressDetectionUntil) {
       setVoicedUi(null)
+      pushHarmonics(null, null)
       trail.push(null, false)
       return
     }
     const note = pickLatestVoiced(result.pitch_hz, result.confidence)
+    pushHarmonics(window, note)
     updateTargetProgress(note)
     setVoicedUi(note)
     trail.push(note?.hz ?? null, note != null)
@@ -410,10 +429,13 @@ async function runInference(): Promise<void> {
 function animate(): void {
   if (trail.reviewing && player.isPlaying && scrubPointer == null) {
     trail.setPlayhead(player.currentTime)
-    showPlayheadNote(trail.pointAt(trail.playheadSeconds))
+    const at = trail.playheadSeconds
+    harmonics.setPlayhead(at)
+    showPlayheadNote(trail.pointAt(at))
     updateTransport()
   }
   trail.draw()
+  harmonics.draw()
   requestAnimationFrame(animate)
 }
 
@@ -423,6 +445,7 @@ async function startListening(): Promise<void> {
     closeTake()
     ring.clear()
     trail.clear()
+    harmonics.clear()
     smoothedCents = 0
     lastNote = null
     targetHeldSince = null
@@ -437,6 +460,7 @@ async function startListening(): Promise<void> {
     // Every listen session is a take — stop listening opens it in the scope.
     if ('MediaRecorder' in window) capture.startRecording()
     trail.startRecording()
+    harmonics.startRecording()
 
     if (inferTimer != null) window.clearInterval(inferTimer)
     inferTimer = window.setInterval(() => {
@@ -458,6 +482,7 @@ async function finishRecording(): Promise<void> {
   // Stop the pitch capture first so its timeline ends with the audio rather than
   // with the container's stop event.
   const take = trail.stopRecording()
+  const harmonicTake = harmonics.stopRecording()
   const recording = await capture.stopRecording()
   if (recording.size === 0 && take.duration < 0.05) return
 
@@ -486,10 +511,11 @@ async function finishRecording(): Promise<void> {
     recordStatusEl.textContent = 'Take shown without audio'
   }
 
-  openTake({
-    points: take.points,
-    duration: Math.max(audioSeconds, take.duration),
-  })
+  const duration = Math.max(audioSeconds, take.duration)
+  openTake(
+    { points: take.points, duration },
+    { points: harmonicTake.points, duration },
+  )
 }
 
 async function stopListening(): Promise<void> {
@@ -629,41 +655,52 @@ closeTakeBtn.addEventListener('click', closeTake)
 
 player.onEnded = () => {
   trail.setPlayhead(trail.duration)
-  showPlayheadNote(trail.pointAt(trail.playheadSeconds))
+  const at = trail.playheadSeconds
+  harmonics.setPlayhead(at)
+  showPlayheadNote(trail.pointAt(at))
   updateTransport()
 }
 
-trailCanvas.addEventListener('pointerdown', (event) => {
-  if (!trail.reviewing) return
-  scrubPointer = event.pointerId
-  trailCanvas.setPointerCapture(event.pointerId)
-  // Scrubbing a live source is not possible, so park playback and pick it back up
-  // from wherever the cursor is dropped.
-  resumeAfterScrub = player.isPlaying
-  if (resumeAfterScrub) player.pause()
-  movePlayhead(trail.timeAtClientX(event.clientX))
-  event.preventDefault()
-})
+/** Both scopes share one playhead, so either can be dragged to move the take. */
+function enableScrubbing(
+  canvas: HTMLCanvasElement,
+  timeAtClientX: (clientX: number) => number,
+): void {
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!trail.reviewing) return
+    scrubPointer = event.pointerId
+    canvas.setPointerCapture(event.pointerId)
+    // Scrubbing a live source is not possible, so park playback and pick it back up
+    // from wherever the cursor is dropped.
+    resumeAfterScrub = player.isPlaying
+    if (resumeAfterScrub) player.pause()
+    movePlayhead(timeAtClientX(event.clientX))
+    event.preventDefault()
+  })
 
-trailCanvas.addEventListener('pointermove', (event) => {
-  if (scrubPointer !== event.pointerId) return
-  movePlayhead(trail.timeAtClientX(event.clientX))
-})
+  canvas.addEventListener('pointermove', (event) => {
+    if (scrubPointer !== event.pointerId) return
+    movePlayhead(timeAtClientX(event.clientX))
+  })
 
-function endScrub(event: PointerEvent): void {
-  if (scrubPointer !== event.pointerId) return
-  scrubPointer = null
-  if (trailCanvas.hasPointerCapture(event.pointerId)) {
-    trailCanvas.releasePointerCapture(event.pointerId)
+  const endScrub = (event: PointerEvent): void => {
+    if (scrubPointer !== event.pointerId) return
+    scrubPointer = null
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId)
+    }
+    if (!resumeAfterScrub) return
+    resumeAfterScrub = false
+    player.play()
+    updateTransport()
   }
-  if (!resumeAfterScrub) return
-  resumeAfterScrub = false
-  player.play()
-  updateTransport()
+
+  canvas.addEventListener('pointerup', endScrub)
+  canvas.addEventListener('pointercancel', endScrub)
 }
 
-trailCanvas.addEventListener('pointerup', endScrub)
-trailCanvas.addEventListener('pointercancel', endScrub)
+enableScrubbing(trailCanvas, (clientX) => trail.timeAtClientX(clientX))
+enableScrubbing(harmonicCanvas, (clientX) => harmonics.timeAtClientX(clientX))
 holdSecondsInput.addEventListener('change', () => {
   const seconds = targetHoldSeconds()
   holdSecondsInput.value = String(seconds)
@@ -690,9 +727,14 @@ new ResizeObserver(() => {
   trail.resize()
 }).observe(trailCanvas)
 
+new ResizeObserver(() => {
+  harmonics.resize()
+}).observe(harmonicCanvas)
+
 // Backing store scale depends on devicePixelRatio, which the observer does not track.
 window.addEventListener('resize', () => {
   trail.resize()
+  harmonics.resize()
 })
 
 async function boot(): Promise<void> {

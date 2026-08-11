@@ -288,6 +288,24 @@ a {
   touch-action: none;
 }
 
+/* ---------- Harmonic trail ---------- */
+
+.harmonics {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.harmonic-trail {
+  display: block;
+  width: 100%;
+  height: clamp(130px, 18vh, 190px);
+}
+
+.harmonic-trail.scrubbable {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
 /* ---------- Take transport ---------- */
 
 .transport {
@@ -660,6 +678,10 @@ kbd {
 
   .trail {
     height: clamp(220px, 34vh, 320px);
+  }
+
+  .harmonic-trail {
+    height: 130px;
   }
 }
 
