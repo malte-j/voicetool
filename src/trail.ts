@@ -15,6 +15,12 @@ export interface PushOptions {
   snap?: boolean
 }
 
+/** A captured take: the same trail points, timed from the start of the recording. */
+export interface RecordedTrail {
+  points: TrailPoint[]
+  duration: number
+}
+
 /** Weight given to a fresh detection when blending in MIDI space. */
 const PITCH_ALPHA = 0.6
 /** A step larger than this is treated as a possible octave error until confirmed. */
@@ -40,6 +46,16 @@ const LABEL_FONT = `500 ${LABEL_SIZE}px 'Suisse Intl', system-ui, -apple-system,
 const LABEL_GAP = 5
 const LABEL_PAD_X = 3
 const LABEL_HEIGHT = LABEL_SIZE + 4
+/** Semitones of headroom around the pitches actually sung in a reviewed take. */
+const REVIEW_PAD = 3
+/** A take that never leaves one note still gets this much scale around it. */
+const REVIEW_MIN_SPAN = 14
+/** How far from the playhead a point may sit and still name the pitch under it. */
+const PLAYHEAD_TOLERANCE_SEC = 0.12
+const PLAYHEAD_COLOR = '#1a1a1a'
+const TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
+/** Time gridlines aim for roughly this spacing before the next step up is used. */
+const TICK_TARGET_PX = 110
 
 /** Canvas pitch trail rendered in MIDI space over a rolling time window. */
 export class PitchTrail {
@@ -58,10 +74,17 @@ export class PitchTrail {
   private renderSeeded = false
   private lastFrameT = NaN
 
+  private octaveBase = 48
   private targetMin = octaveLow(48)
   private targetMax = octaveHigh(48)
   private viewMin = this.targetMin
   private viewMax = this.targetMax
+
+  private capturing = false
+  private captureStart = 0
+  private captured: TrailPoint[] = []
+  private review: RecordedTrail | null = null
+  private playhead = 0
 
   constructor(canvas: HTMLCanvasElement, windowSec = 8) {
     const ctx = canvas.getContext('2d')
@@ -86,12 +109,11 @@ export class PitchTrail {
    * few semitones of headroom on each side and clamped to what the model can detect.
    */
   setOctave(baseMidi: number): void {
-    this.targetMin = octaveLow(baseMidi)
-    this.targetMax = octaveHigh(baseMidi)
-    if (this.reduceMotion) {
-      this.viewMin = this.targetMin
-      this.viewMax = this.targetMax
-    }
+    this.octaveBase = baseMidi
+    // A reviewed take frames its own pitch range, so leave the viewport alone and
+    // let closeRecording() pick the octave back up.
+    if (this.review) return
+    this.frameRange(octaveLow(baseMidi), octaveHigh(baseMidi))
   }
 
   push(hz: number | null, voiced: boolean, options: PushOptions = {}): void {
@@ -99,8 +121,7 @@ export class PitchTrail {
     const raw = hz && voiced ? hzToMidi(hz) : NaN
 
     if (!voiced || !Number.isFinite(raw)) {
-      this.points.push({ t: now, midi: NaN, voiced: false, color: '' })
-      this.trim(now)
+      this.commit({ t: now, midi: NaN, voiced: false, color: '' })
       return
     }
 
@@ -130,13 +151,20 @@ export class PitchTrail {
     }
 
     this.lastVoicedT = now
-    this.points.push({
+    this.commit({
       t: now,
       midi: this.smoothMidi,
       voiced: true,
       color: tuningColor(midiToCents(this.smoothMidi)),
     })
-    this.trim(now)
+  }
+
+  private commit(point: TrailPoint): void {
+    this.points.push(point)
+    if (this.capturing) {
+      this.captured.push({ ...point, t: point.t - this.captureStart })
+    }
+    this.trim(point.t)
   }
 
   clear(): void {
@@ -148,6 +176,103 @@ export class PitchTrail {
     this.renderSeeded = false
     this.lastFrameT = NaN
     this.draw()
+  }
+
+  /** Starts collecting an untrimmed copy of the trail, timed from this moment. */
+  startRecording(now = performance.now() / 1000): void {
+    this.capturing = true
+    this.captureStart = now
+    this.captured = []
+  }
+
+  stopRecording(now = performance.now() / 1000): RecordedTrail {
+    const points = this.captured
+    const duration = this.capturing ? Math.max(0, now - this.captureStart) : 0
+    this.capturing = false
+    this.captured = []
+    return { points, duration }
+  }
+
+  /** Freezes the scope on a finished take, with a playhead at its start. */
+  showRecording(recording: RecordedTrail): void {
+    this.review = { ...recording, duration: Math.max(recording.duration, 0.05) }
+    this.playhead = 0
+    this.renderSeeded = false
+    this.frameRecording(recording.points)
+  }
+
+  closeRecording(): void {
+    if (!this.review) return
+    this.review = null
+    this.frameRange(octaveLow(this.octaveBase), octaveHigh(this.octaveBase))
+  }
+
+  get reviewing(): boolean {
+    return this.review != null
+  }
+
+  get duration(): number {
+    return this.review?.duration ?? 0
+  }
+
+  get playheadSeconds(): number {
+    return this.playhead
+  }
+
+  setPlayhead(seconds: number): void {
+    if (!this.review) return
+    this.playhead = Math.max(0, Math.min(this.review.duration, seconds))
+  }
+
+  /** Time under a pointer, for click-and-drag scrubbing. */
+  timeAtClientX(clientX: number): number {
+    if (!this.review) return 0
+    const rect = this.canvas.getBoundingClientRect()
+    const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
+    return Math.max(0, Math.min(1, ratio)) * this.review.duration
+  }
+
+  /** Voiced point nearest `seconds`, or null where the take is silent. */
+  pointAt(seconds: number): TrailPoint | null {
+    if (!this.review) return null
+    let best: TrailPoint | null = null
+    let bestGap = PLAYHEAD_TOLERANCE_SEC
+    for (const p of this.review.points) {
+      if (!p.voiced || !Number.isFinite(p.midi)) continue
+      const gap = Math.abs(p.t - seconds)
+      if (gap > bestGap) continue
+      bestGap = gap
+      best = p
+    }
+    return best
+  }
+
+  private frameRange(min: number, max: number): void {
+    this.targetMin = min
+    this.targetMax = max
+    if (this.reduceMotion) {
+      this.viewMin = min
+      this.viewMax = max
+    }
+  }
+
+  /** Fits the viewport to the pitches actually sung, so a take fills the scope. */
+  private frameRecording(points: TrailPoint[]): void {
+    let min = Infinity
+    let max = -Infinity
+    for (const p of points) {
+      if (!p.voiced || !Number.isFinite(p.midi)) continue
+      min = Math.min(min, p.midi)
+      max = Math.max(max, p.midi)
+    }
+    if (!Number.isFinite(min)) return
+
+    const span = Math.max(REVIEW_MIN_SPAN, max - min + REVIEW_PAD * 2)
+    const center = (min + max) / 2
+    this.frameRange(
+      Math.max(MODEL_MIDI_MIN, center - span / 2),
+      Math.min(MODEL_MIDI_MAX, center + span / 2),
+    )
   }
 
   draw(now = performance.now() / 1000): void {
@@ -174,16 +299,12 @@ export class PitchTrail {
 
     this.drawPitchGrid(w, h, yMin, yMax)
 
-    // Vertical time grid, one line per second
-    ctx.strokeStyle = '#c6c6c6'
-    ctx.lineWidth = 1
-    for (let s = 1; s < this.windowSec; s++) {
-      const x = (s / this.windowSec) * w
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, h)
-      ctx.stroke()
+    if (this.review) {
+      this.drawReview(w, h, yMin, yMax)
+      return
     }
+
+    this.drawTimeGrid(w, h, this.windowSec, false)
 
     if (!this.points.length) {
       this.renderSeeded = false
@@ -217,20 +338,50 @@ export class PitchTrail {
     ctx.lineWidth = 1.5
     ctx.lineJoin = 'round'
     ctx.lineCap = 'butt'
+    this.strokeTrail(this.points, (t) => ((t - t0) / this.windowSec) * w, yMin, yMax, h)
 
-    // Runs of segments sharing a colour are stroked as one subpath, so the trail keeps
-    // its round joins and stays linear in the number of points.
+    // Extend the line to the eased marker so the two never separate.
+    const liveColor = live ? tuningColor(midiToCents(this.renderMidi)) : ''
+    if (live && head) {
+      ctx.strokeStyle = liveColor
+      ctx.beginPath()
+      ctx.moveTo(((head.t - t0) / this.windowSec) * w, midiToY(head.midi, yMin, yMax, h))
+      ctx.lineTo(markerX, markerY)
+      ctx.stroke()
+    }
+
+    // Flat marker on the latest voiced point, like an automation breakpoint
+    if (live) {
+      ctx.fillStyle = liveColor
+      ctx.fillRect(markerX - MARKER_HALF, markerY - MARKER_HALF, MARKER_HALF * 2, MARKER_HALF * 2)
+      this.drawNoteLabel(markerX, markerY, w, h, this.renderMidi)
+    }
+  }
+
+  /**
+   * Runs of segments sharing a colour are stroked as one subpath, so the trail keeps
+   * its round joins and stays linear in the number of points.
+   */
+  private strokeTrail(
+    points: TrailPoint[],
+    toX: (t: number) => number,
+    yMin: number,
+    yMax: number,
+    h: number,
+  ): void {
+    const ctx = this.ctx
     let open = false
     let openColor = ''
     let prevX = 0
     let prevY = 0
     let hasPrev = false
-    for (const p of this.points) {
+
+    for (const p of points) {
       if (!p.voiced || !Number.isFinite(p.midi)) {
         hasPrev = false
         continue
       }
-      const x = ((p.t - t0) / this.windowSec) * w
+      const x = toX(p.t)
       const y = midiToY(p.midi, yMin, yMax, h)
       if (hasPrev) {
         if (!open || p.color !== openColor) {
@@ -251,22 +402,67 @@ export class PitchTrail {
       hasPrev = true
     }
     if (open) ctx.stroke()
+  }
 
-    // Extend the line to the eased marker so the two never separate.
-    const liveColor = live ? tuningColor(midiToCents(this.renderMidi)) : ''
-    if (live && head) {
-      ctx.strokeStyle = liveColor
+  /** The whole take laid out across the scope, with the scrub cursor on top. */
+  private drawReview(w: number, h: number, yMin: number, yMax: number): void {
+    const review = this.review!
+    const ctx = this.ctx
+    const toX = (t: number): number => (t / review.duration) * w
+
+    this.drawTimeGrid(w, h, review.duration, true)
+
+    ctx.lineWidth = 1.5
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'butt'
+    this.strokeTrail(review.points, toX, yMin, yMax, h)
+
+    const x = Math.round(toX(this.playhead)) + 0.5
+    ctx.strokeStyle = PLAYHEAD_COLOR
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, h)
+    ctx.stroke()
+
+    // Grab handle, so the cursor reads as something you can drag.
+    ctx.fillStyle = PLAYHEAD_COLOR
+    ctx.beginPath()
+    ctx.moveTo(x - 5, 0)
+    ctx.lineTo(x + 5, 0)
+    ctx.lineTo(x, 7)
+    ctx.closePath()
+    ctx.fill()
+
+    const point = this.pointAt(this.playhead)
+    if (!point) return
+
+    const y = midiToY(point.midi, yMin, yMax, h)
+    ctx.fillStyle = point.color
+    ctx.fillRect(x - MARKER_HALF, y - MARKER_HALF, MARKER_HALF * 2, MARKER_HALF * 2)
+    this.drawNoteLabel(x, y, w, h, point.midi)
+  }
+
+  private drawTimeGrid(w: number, h: number, span: number, labelled: boolean): void {
+    const ctx = this.ctx
+    const step = tickStep(span, w)
+    const decimals = step < 1 ? 1 : 0
+
+    ctx.strokeStyle = '#c6c6c6'
+    ctx.lineWidth = 1
+    ctx.fillStyle = '#6f6f6f'
+    ctx.font = GRID_LABEL_FONT
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+
+    for (let i = 1; i * step < span; i++) {
+      const seconds = i * step
+      const x = Math.round((seconds / span) * w) + 0.5
       ctx.beginPath()
-      ctx.moveTo(((head.t - t0) / this.windowSec) * w, midiToY(head.midi, yMin, yMax, h))
-      ctx.lineTo(markerX, markerY)
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x, h)
       ctx.stroke()
-    }
-
-    // Flat marker on the latest voiced point, like an automation breakpoint
-    if (live) {
-      ctx.fillStyle = liveColor
-      ctx.fillRect(markerX - MARKER_HALF, markerY - MARKER_HALF, MARKER_HALF * 2, MARKER_HALF * 2)
-      this.drawNoteLabel(markerX, markerY, h)
+      if (labelled) ctx.fillText(formatClock(seconds, decimals), x + 3, 3)
     }
   }
 
@@ -317,9 +513,15 @@ export class PitchTrail {
     }
   }
 
-  /** Names the eased pitch, kept left of the marker since the marker hugs the right edge. */
-  private drawNoteLabel(markerX: number, markerY: number, h: number): void {
-    const { name, octave } = midiToNoteName(this.renderMidi)
+  /** Names the pitch at a marker, preferring the right side and flipping when it would clip. */
+  private drawNoteLabel(
+    markerX: number,
+    markerY: number,
+    w: number,
+    h: number,
+    midi: number,
+  ): void {
+    const { name, octave } = midiToNoteName(midi)
     const ctx = this.ctx
     const label = `${name}${octave}`
 
@@ -328,7 +530,10 @@ export class PitchTrail {
     ctx.textBaseline = 'middle'
 
     const chipW = ctx.measureText(label).width + LABEL_PAD_X * 2
-    const chipX = Math.round(Math.max(1, markerX - MARKER_HALF - LABEL_GAP - chipW))
+    const right = markerX + MARKER_HALF + LABEL_GAP
+    const chipX = Math.round(
+      right + chipW <= w - 1 ? right : Math.max(1, markerX - MARKER_HALF - LABEL_GAP - chipW),
+    )
     const above = markerY - MARKER_HALF - LABEL_GAP - LABEL_HEIGHT
     const chipY = Math.round(
       above >= 1
@@ -362,4 +567,17 @@ function octaveLow(baseMidi: number): number {
 
 function octaveHigh(baseMidi: number): number {
   return Math.min(MODEL_MIDI_MAX, baseMidi + 12 + RANGE_PAD)
+}
+
+function tickStep(span: number, w: number): number {
+  const wanted = (span / Math.max(w, 1)) * TICK_TARGET_PX
+  return TICK_STEPS.find((step) => step >= wanted) ?? TICK_STEPS[TICK_STEPS.length - 1]
+}
+
+/** `m:ss` transport time, e.g. 1:05.4 */
+export function formatClock(seconds: number, decimals = 0): string {
+  const safe = Math.max(0, seconds)
+  const minutes = Math.floor(safe / 60)
+  const rest = safe - minutes * 60
+  return `${minutes}:${rest.toFixed(decimals).padStart(decimals ? 3 + decimals : 2, '0')}`
 }

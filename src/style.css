@@ -282,6 +282,99 @@ a {
   height: clamp(340px, 46vh, 540px);
 }
 
+/* Only while scrubbing, so the tall canvas never swallows page scroll on touch. */
+.trail.scrubbable {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* ---------- Take transport ---------- */
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  background: var(--titlebar);
+  border-bottom: 1px solid var(--border);
+}
+
+.transport[hidden] {
+  display: none;
+}
+
+.transport-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-hi);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+  font: inherit;
+}
+
+.transport-play:hover:not(:disabled) {
+  background: #e2e2e2;
+}
+
+.transport-play:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Triangle when stopped, two bars when playing. */
+.transport-glyph {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid var(--text);
+}
+
+.transport-play.playing .transport-glyph {
+  width: 8px;
+  height: 10px;
+  border: 0;
+  background: linear-gradient(
+    to right,
+    var(--text) 0 3px,
+    transparent 3px 5px,
+    var(--text) 5px 8px
+  );
+}
+
+.transport-time {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.transport-link {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.transport-close {
+  height: 22px;
+  padding: 0 9px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-hi);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+  font: inherit;
+}
+
+.transport-close:hover {
+  background: #e2e2e2;
+}
+
 .instrument {
   display: flex;
   flex-direction: column;
@@ -310,8 +403,15 @@ a {
   margin-top: auto;
 }
 
+.record-status {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
 .instrument-settings,
-.hold-control {
+.hold-control,
+.monitor-control {
   display: flex;
   align-items: center;
 }
@@ -320,10 +420,20 @@ a {
   gap: 14px;
 }
 
-.hold-control {
+.hold-control,
+.monitor-control {
   gap: 5px;
   color: var(--text-dim);
   letter-spacing: 0.04em;
+}
+
+.monitor-control {
+  cursor: pointer;
+}
+
+.monitor-control input {
+  margin: 0;
+  accent-color: var(--accent-deep);
 }
 
 .hold-control input {
@@ -556,6 +666,10 @@ kbd {
 /* Phone widths make each white key too narrow for a shortcut badge, and the
    shortcuts are useless without a physical keyboard anyway. */
 @media (max-width: 620px) {
+  .instrument-footer {
+    flex-wrap: wrap;
+  }
+
   .shortcut-label {
     display: none;
   }

@@ -17,8 +17,14 @@ import {
   midiToHz,
   type DetectedNote,
 } from './pitch'
+import { RecordingPlayer } from './playback'
 import { Synth } from './synth'
-import { PitchTrail } from './trail'
+import {
+  PitchTrail,
+  formatClock,
+  type RecordedTrail,
+  type TrailPoint,
+} from './trail'
 import { tuningColor } from './tuning'
 
 const WINDOW_SECONDS = 0.85
@@ -44,12 +50,21 @@ const octaveUpBtn = document.querySelector<HTMLButtonElement>('#octaveUp')!
 const octaveValueEl = document.querySelector<HTMLElement>('#octaveValue')!
 const targetStatusEl = document.querySelector<HTMLParagraphElement>('#targetStatus')!
 const holdSecondsInput = document.querySelector<HTMLInputElement>('#holdSeconds')!
+const monitorInput = document.querySelector<HTMLInputElement>('#monitorInput')!
+const recordStatusEl = document.querySelector<HTMLParagraphElement>('#recordStatus')!
+const recordingDownload = document.querySelector<HTMLAnchorElement>('#recordingDownload')!
+const transportEl = document.querySelector<HTMLDivElement>('#transport')!
+const playBtn = document.querySelector<HTMLButtonElement>('#playBtn')!
+const playLabel = document.querySelector<HTMLSpanElement>('#playLabel')!
+const transportTimeEl = document.querySelector<HTMLSpanElement>('#transportTime')!
+const closeTakeBtn = document.querySelector<HTMLButtonElement>('#closeTakeBtn')!
 
 const onnx = new ONNXService('model.onnx')
 const capture = new AudioCapture()
 const ring = new SampleRingBuffer(TARGET_SAMPLE_RATE * 2)
 const trail = new PitchTrail(trailCanvas, 8)
 const synth = new Synth()
+const player = new RecordingPlayer()
 
 let listening = false
 let inferTimer: number | null = null
@@ -62,6 +77,10 @@ let targetMidi: number | null = null
 let targetHeldSince: number | null = null
 let targetCompleted = false
 let suppressDetectionUntil = 0
+let recordingUrl: string | null = null
+let scrubPointer: number | null = null
+let resumeAfterScrub = false
+let shownPlayheadMidi: number | null | undefined
 const heldComputerKeys = new Map<string, number>()
 const heldPointerNotes = new Set<number>()
 
@@ -86,6 +105,10 @@ function setTuningColor(cents: number | null): void {
 }
 
 function setVoicedUi(note: DetectedNote | null): void {
+  // A take under review owns the panel; detection keeps filling the live trail
+  // in the background so it is ready when you go back to it.
+  if (trail.reviewing) return
+
   const voiced = note != null
   noteDisplayEl.classList.toggle('voiced', voiced)
 
@@ -122,6 +145,8 @@ function setVoicedUi(note: DetectedNote | null): void {
 
 function showPlayedNote(midi: number): void {
   const note = analyzePitch(midiToHz(midi), 1)
+  // Let a reviewed take repaint the panel as soon as its playhead moves again.
+  shownPlayheadMidi = undefined
   noteDisplayEl.classList.add('voiced')
   noteNameEl.textContent = formatNote(note)
   noteHzEl.textContent = `${note.hz.toFixed(1)} Hz`
@@ -130,6 +155,76 @@ function showPlayedNote(midi: number): void {
   centsValueEl.textContent = '0 ¢'
   setTuningColor(0)
   trail.push(note.hz, true, { snap: true })
+}
+
+/** Drives the note panel from the take's playhead instead of the microphone. */
+function showPlayheadNote(point: TrailPoint | null): void {
+  const midi = point?.midi ?? null
+  if (midi === shownPlayheadMidi) return
+  shownPlayheadMidi = midi
+
+  if (midi == null) {
+    noteDisplayEl.classList.remove('voiced')
+    noteNameEl.textContent = '—'
+    noteHzEl.textContent = '— Hz'
+    noteConfEl.textContent = 'Take'
+    centsNeedleEl.style.left = '50%'
+    centsValueEl.textContent = '0 ¢'
+    setTuningColor(null)
+    highlightDetectedKey(keyboardEl, null)
+    return
+  }
+
+  const note = analyzePitch(midiToHz(midi), 1)
+  noteDisplayEl.classList.add('voiced')
+  noteNameEl.textContent = formatNote(note)
+  noteHzEl.textContent = `${note.hz.toFixed(1)} Hz`
+  noteConfEl.textContent = 'Take'
+  const clamped = Math.max(-50, Math.min(50, note.cents))
+  centsNeedleEl.style.left = `${((clamped + 50) / 100) * 100}%`
+  centsValueEl.textContent = `${clamped > 0 ? '+' : ''}${clamped.toFixed(0)} ¢`
+  setTuningColor(clamped)
+  highlightDetectedKey(keyboardEl, Math.round(note.midi))
+}
+
+function updateTransport(): void {
+  transportTimeEl.textContent =
+    `${formatClock(trail.playheadSeconds, 1)} / ${formatClock(trail.duration, 1)}`
+  playBtn.classList.toggle('playing', player.isPlaying)
+  playLabel.textContent = player.isPlaying ? 'Pause' : 'Play'
+}
+
+function movePlayhead(seconds: number): void {
+  trail.setPlayhead(seconds)
+  const at = trail.playheadSeconds
+  player.seek(at)
+  showPlayheadNote(trail.pointAt(at))
+  updateTransport()
+}
+
+function openTake(recording: RecordedTrail): void {
+  trail.showRecording(recording)
+  transportEl.hidden = false
+  trailCanvas.classList.add('scrubbable')
+  shownPlayheadMidi = undefined
+  showPlayheadNote(trail.pointAt(0))
+  updateTransport()
+}
+
+function closeTake(): void {
+  if (!trail.reviewing) return
+  player.pause()
+  player.unload()
+  trail.closeRecording()
+  transportEl.hidden = true
+  trailCanvas.classList.remove('scrubbable')
+  scrubPointer = null
+  resumeAfterScrub = false
+  shownPlayheadMidi = undefined
+  recordStatusEl.textContent = ''
+  lastNote = null
+  holdUntil = 0
+  setVoicedUi(null)
 }
 
 function targetName(midi: number): string {
@@ -157,7 +252,7 @@ function selectTarget(midi: number): void {
 }
 
 function updateTargetProgress(note: DetectedNote | null): void {
-  if (targetMidi == null || targetCompleted) return
+  if (targetMidi == null || targetCompleted || trail.reviewing) return
 
   const targetIsPlaying =
     heldPointerNotes.has(targetMidi) ||
@@ -313,6 +408,11 @@ async function runInference(): Promise<void> {
 }
 
 function animate(): void {
+  if (trail.reviewing && player.isPlaying && scrubPointer == null) {
+    trail.setPlayhead(player.currentTime)
+    showPlayheadNote(trail.pointAt(trail.playheadSeconds))
+    updateTransport()
+  }
   trail.draw()
   requestAnimationFrame(animate)
 }
@@ -320,6 +420,7 @@ function animate(): void {
 async function startListening(): Promise<void> {
   try {
     setListenLabel('Requesting microphone…')
+    closeTake()
     ring.clear()
     trail.clear()
     smoothedCents = 0
@@ -333,6 +434,9 @@ async function startListening(): Promise<void> {
 
     listening = true
     setListenLabel('stop listening', 'listening')
+    // Every listen session is a take — stop listening opens it in the scope.
+    if ('MediaRecorder' in window) capture.startRecording()
+    trail.startRecording()
 
     if (inferTimer != null) window.clearInterval(inferTimer)
     inferTimer = window.setInterval(() => {
@@ -350,8 +454,47 @@ async function startListening(): Promise<void> {
   }
 }
 
+async function finishRecording(): Promise<void> {
+  // Stop the pitch capture first so its timeline ends with the audio rather than
+  // with the container's stop event.
+  const take = trail.stopRecording()
+  const recording = await capture.stopRecording()
+  if (recording.size === 0 && take.duration < 0.05) return
+
+  let audioSeconds = 0
+  if (recording.size > 0) {
+    if (recordingUrl) URL.revokeObjectURL(recordingUrl)
+    recordingUrl = URL.createObjectURL(recording)
+    recordingDownload.href = recordingUrl
+    recordingDownload.download =
+      `voicetool-${new Date().toISOString().replaceAll(':', '-')}.${recording.type.includes('mp4') ? 'm4a' : 'webm'}`
+    recordingDownload.hidden = false
+
+    try {
+      audioSeconds = await player.load(recording)
+      playBtn.disabled = false
+      recordStatusEl.textContent = ''
+    } catch (err) {
+      console.error(err)
+      player.unload()
+      playBtn.disabled = true
+      recordStatusEl.textContent = 'Take shown without audio — this browser could not decode it'
+    }
+  } else {
+    recordingDownload.hidden = true
+    playBtn.disabled = true
+    recordStatusEl.textContent = 'Take shown without audio'
+  }
+
+  openTake({
+    points: take.points,
+    duration: Math.max(audioSeconds, take.duration),
+  })
+}
+
 async function stopListening(): Promise<void> {
   listening = false
+  await finishRecording()
   if (inferTimer != null) {
     window.clearInterval(inferTimer)
     inferTimer = null
@@ -361,6 +504,9 @@ async function stopListening(): Promise<void> {
   levelFillEl.style.width = '0%'
   targetHeldSince = null
   setVoicedUi(null)
+  // The listening button may still own keyboard focus after Space stopped the
+  // take. Move focus to playback so the next Space plays instead of recording.
+  if (!playBtn.disabled) playBtn.focus()
 }
 
 listenBtn.addEventListener('click', () => {
@@ -368,9 +514,41 @@ listenBtn.addEventListener('click', () => {
   else void startListening()
 })
 
+/** Transport keys while a take is open. Returns whether the key was handled. */
+function handleTakeKey(event: KeyboardEvent): boolean {
+  const nudge = event.shiftKey ? 1 : 0.1
+
+  switch (event.key) {
+    case ' ':
+      // Let the focused Play button use its native Space activation. Other
+      // buttons (especially Start listening) must not steal the shortcut.
+      if (event.repeat || event.target === playBtn) return false
+      player.toggle()
+      updateTransport()
+      return true
+    case 'Escape':
+      if (event.repeat) return false
+      closeTake()
+      return true
+    case 'ArrowLeft':
+      movePlayhead(trail.playheadSeconds - nudge)
+      return true
+    case 'ArrowRight':
+      movePlayhead(trail.playheadSeconds + nudge)
+      return true
+    case 'Home':
+      movePlayhead(0)
+      return true
+    case 'End':
+      movePlayhead(trail.duration)
+      return true
+    default:
+      return false
+  }
+}
+
 window.addEventListener('keydown', (event) => {
   if (
-    event.repeat ||
     event.metaKey ||
     event.ctrlKey ||
     event.altKey ||
@@ -379,6 +557,14 @@ window.addEventListener('keydown', (event) => {
   ) {
     return
   }
+
+  // Before the repeat guard: holding an arrow key should keep the playhead moving.
+  if (trail.reviewing && handleTakeKey(event)) {
+    event.preventDefault()
+    return
+  }
+
+  if (event.repeat) return
 
   const key = event.key.toLowerCase()
   if (key === 'z') {
@@ -431,6 +617,53 @@ keyboardEl.addEventListener('pointerup', releasePointerNote)
 keyboardEl.addEventListener('pointercancel', releasePointerNote)
 octaveDownBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave - 1))
 octaveUpBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave + 1))
+monitorInput.addEventListener('change', () => {
+  capture.setMonitoring(monitorInput.checked)
+})
+playBtn.addEventListener('click', () => {
+  player.toggle()
+  updateTransport()
+})
+
+closeTakeBtn.addEventListener('click', closeTake)
+
+player.onEnded = () => {
+  trail.setPlayhead(trail.duration)
+  showPlayheadNote(trail.pointAt(trail.playheadSeconds))
+  updateTransport()
+}
+
+trailCanvas.addEventListener('pointerdown', (event) => {
+  if (!trail.reviewing) return
+  scrubPointer = event.pointerId
+  trailCanvas.setPointerCapture(event.pointerId)
+  // Scrubbing a live source is not possible, so park playback and pick it back up
+  // from wherever the cursor is dropped.
+  resumeAfterScrub = player.isPlaying
+  if (resumeAfterScrub) player.pause()
+  movePlayhead(trail.timeAtClientX(event.clientX))
+  event.preventDefault()
+})
+
+trailCanvas.addEventListener('pointermove', (event) => {
+  if (scrubPointer !== event.pointerId) return
+  movePlayhead(trail.timeAtClientX(event.clientX))
+})
+
+function endScrub(event: PointerEvent): void {
+  if (scrubPointer !== event.pointerId) return
+  scrubPointer = null
+  if (trailCanvas.hasPointerCapture(event.pointerId)) {
+    trailCanvas.releasePointerCapture(event.pointerId)
+  }
+  if (!resumeAfterScrub) return
+  resumeAfterScrub = false
+  player.play()
+  updateTransport()
+}
+
+trailCanvas.addEventListener('pointerup', endScrub)
+trailCanvas.addEventListener('pointercancel', endScrub)
 holdSecondsInput.addEventListener('change', () => {
   const seconds = targetHoldSeconds()
   holdSecondsInput.value = String(seconds)

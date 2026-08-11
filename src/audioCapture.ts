@@ -12,23 +12,31 @@ export class AudioCapture {
   private source: MediaStreamAudioSourceNode | null = null
   private processor: ScriptProcessorNode | null = null
   private silentGain: GainNode | null = null
+  private monitorGain: GainNode | null = null
+  private recorder: MediaRecorder | null = null
+  private recordedChunks: Blob[] = []
+  private monitoring = false
   private running = false
   private carry = new Float32Array(0)
 
   async start(onChunk: AudioChunkHandler): Promise<void> {
     if (this.running) return
 
+    const audioConstraints: MediaTrackConstraints & {
+      latency?: { ideal: number }
+    } = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+      latency: { ideal: 0 },
+    }
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1,
-      },
+      audio: audioConstraints,
       video: false,
     })
 
-    this.context = new AudioContext()
+    this.context = new AudioContext({ latencyHint: 'interactive' })
     // Some browsers start suspended until a gesture — ensure running.
     if (this.context.state === 'suspended') {
       await this.context.resume()
@@ -36,9 +44,11 @@ export class AudioCapture {
 
     this.source = this.context.createMediaStreamSource(this.stream)
     // ScriptProcessor is deprecated but widely supported and sufficient here.
-    this.processor = this.context.createScriptProcessor(4096, 1, 1)
+    this.processor = this.context.createScriptProcessor(1024, 1, 1)
     this.silentGain = this.context.createGain()
     this.silentGain.gain.value = 0
+    this.monitorGain = this.context.createGain()
+    this.monitorGain.gain.value = this.monitoring ? 1 : 0
 
     this.processor.onaudioprocess = (event) => {
       if (!this.running || !this.context) return
@@ -48,9 +58,58 @@ export class AudioCapture {
     }
 
     this.source.connect(this.processor)
+    this.source.connect(this.monitorGain)
     this.processor.connect(this.silentGain)
     this.silentGain.connect(this.context.destination)
+    this.monitorGain.connect(this.context.destination)
     this.running = true
+  }
+
+  setMonitoring(enabled: boolean): void {
+    this.monitoring = enabled
+    this.monitorGain?.gain.setValueAtTime(
+      enabled ? 1 : 0,
+      this.context?.currentTime ?? 0,
+    )
+  }
+
+  startRecording(): void {
+    if (!this.stream) throw new Error('Start listening before recording')
+    if (this.recorder?.state === 'recording') return
+
+    const mimeType = [
+      'audio/webm;codecs=opus',
+      'audio/mp4',
+      'audio/webm',
+    ].find((type) => MediaRecorder.isTypeSupported(type))
+    this.recordedChunks = []
+    this.recorder = new MediaRecorder(
+      this.stream,
+      mimeType ? { mimeType } : undefined,
+    )
+    this.recorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size > 0) this.recordedChunks.push(event.data)
+    })
+    this.recorder.start()
+  }
+
+  stopRecording(): Promise<Blob> {
+    const recorder = this.recorder
+    if (!recorder || recorder.state === 'inactive') {
+      return Promise.resolve(new Blob())
+    }
+
+    return new Promise((resolve) => {
+      recorder.addEventListener('stop', () => {
+        const recording = new Blob(this.recordedChunks, {
+          type: recorder.mimeType,
+        })
+        this.recorder = null
+        this.recordedChunks = []
+        resolve(recording)
+      }, { once: true })
+      recorder.stop()
+    })
   }
 
   async stop(): Promise<void> {
@@ -58,9 +117,11 @@ export class AudioCapture {
     this.processor?.disconnect()
     this.source?.disconnect()
     this.silentGain?.disconnect()
+    this.monitorGain?.disconnect()
     this.processor = null
     this.source = null
     this.silentGain = null
+    this.monitorGain = null
     this.carry = new Float32Array(0)
 
     this.stream?.getTracks().forEach((t) => t.stop())
@@ -74,6 +135,10 @@ export class AudioCapture {
 
   get isRunning(): boolean {
     return this.running
+  }
+
+  get isRecording(): boolean {
+    return this.recorder?.state === 'recording'
   }
 
   /** Linear resample with fractional-index carry across chunks. */

@@ -1,3 +1,11 @@
+# Project summary
+
+Voicetool is a browser-based singing practice app built with TypeScript and Vite.
+It uses the microphone and a SwiftF0 ONNX model for live pitch detection, displays
+notes on a piano-roll trail and keyboard, and includes target-note exercises. Each
+listening session is recorded automatically and can be reviewed with synchronized
+audio, a full pitch trail, and a scrubbable playhead.
+
 # Deployment
 
 The app is deployed to Cloudflare Workers at `https://voice.malte.ws`.
