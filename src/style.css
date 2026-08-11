@@ -664,10 +664,32 @@ kbd {
 }
 
 /* Phone widths make each white key too narrow for a shortcut badge, and the
-   shortcuts are useless without a physical keyboard anyway. */
+   shortcuts are useless without a physical keyboard anyway. The centered
+   credit also collides with the footer controls once that row wraps. */
 @media (max-width: 620px) {
+  .instrument-controls {
+    gap: 8px;
+  }
+
+  .instrument-credit {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    padding: 2px 0 0;
+    order: 2;
+  }
+
   .instrument-footer {
     flex-wrap: wrap;
+    row-gap: 8px;
+    order: 1;
+  }
+
+  .instrument-credit p {
+    overflow-wrap: anywhere;
   }
 
   .shortcut-label {
