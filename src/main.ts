@@ -2,8 +2,13 @@ import './fonts.css'
 import './style.css'
 import { AudioCapture, SampleRingBuffer } from './audioCapture'
 import {
+  DEFAULT_CODE_LABELS,
   KEYBOARD_STEPS,
+  OCTAVE_DOWN_CODE,
+  OCTAVE_UP_CODE,
+  codeLabels,
   highlightDetectedKey,
+  onKeyboardLayoutChange,
   renderKeyboard,
   setKeyState,
 } from './keyboard'
@@ -45,6 +50,7 @@ const centsValueEl = document.querySelector<HTMLParagraphElement>('#centsValue')
 const levelFillEl = document.querySelector<HTMLDivElement>('#levelFill')!
 const listenBtn = document.querySelector<HTMLButtonElement>('#listenBtn')!
 const listenLabel = document.querySelector<HTMLSpanElement>('#listenLabel')!
+const inputSourceEl = document.querySelector<HTMLSelectElement>('#inputSource')!
 const trailCanvas = document.querySelector<HTMLCanvasElement>('#trail')!
 const harmonicCanvas = document.querySelector<HTMLCanvasElement>('#harmonicTrail')!
 const keyboardEl = document.querySelector<HTMLDivElement>('#keyboard')!
@@ -87,14 +93,48 @@ let resumeAfterScrub = false
 let shownPlayheadMidi: number | null | undefined
 const heldComputerKeys = new Map<string, number>()
 const heldPointerNotes = new Set<number>()
+const keyboardHelpEl = document.querySelector<HTMLParagraphElement>('.keyboard-help')!
+let keyLabels = DEFAULT_CODE_LABELS
 
 // Also seeds the scope viewport and the octave readout for the default octave.
 setKeyboardOctave(keyboardOctave)
+void refreshKeyLabels()
+onKeyboardLayoutChange(() => {
+  void refreshKeyLabels()
+})
+
+async function refreshKeyLabels(): Promise<void> {
+  keyLabels = await codeLabels()
+  setKeyboardOctave(keyboardOctave)
+  const down = keyLabels[OCTAVE_DOWN_CODE] ?? 'Z'
+  const up = keyLabels[OCTAVE_UP_CODE] ?? 'X'
+  keyboardHelpEl.replaceChildren()
+  const downKbd = document.createElement('kbd')
+  downKbd.textContent = down
+  const upKbd = document.createElement('kbd')
+  upKbd.textContent = up
+  keyboardHelpEl.append(downKbd, '/', upKbd, ' octave')
+}
 
 function setListenLabel(text: string, kind: 'idle' | 'listening' | 'error' = 'idle'): void {
   listenLabel.textContent = text
   listenBtn.classList.toggle('error', kind === 'error')
   listenBtn.classList.toggle('active', kind === 'listening')
+}
+
+async function refreshInputSources(): Promise<void> {
+  if (!navigator.mediaDevices?.enumerateDevices) return
+
+  const selected = inputSourceEl.value
+  const inputs = (await navigator.mediaDevices.enumerateDevices())
+    .filter((device) => device.kind === 'audioinput')
+  inputSourceEl.replaceChildren(new Option('Default input', ''))
+  inputs.forEach((device, index) => {
+    inputSourceEl.add(new Option(device.label || `Microphone ${index + 1}`, device.deviceId))
+  })
+  if ([...inputSourceEl.options].some((option) => option.value === selected)) {
+    inputSourceEl.value = selected
+  }
 }
 
 function setTuningColor(cents: number | null): void {
@@ -267,8 +307,22 @@ function selectTarget(midi: number): void {
   targetStatusEl.textContent = targetPrompt(midi)
 }
 
+/**
+ * Ends a finished attempt so the target can be won again, while the guard in
+ * updateTargetProgress keeps the cue from retriggering under a held note.
+ */
+function rearmTarget(): void {
+  targetHeldSince = null
+  if (!targetCompleted) return
+  targetCompleted = false
+  keyboardEl.querySelectorAll('.key.achieved').forEach((key) => {
+    key.classList.remove('achieved')
+  })
+  if (targetMidi != null) targetStatusEl.textContent = targetPrompt(targetMidi)
+}
+
 function updateTargetProgress(note: DetectedNote | null): void {
-  if (targetMidi == null || targetCompleted || trail.reviewing) return
+  if (targetMidi == null || trail.reviewing) return
 
   const targetIsPlaying =
     heldPointerNotes.has(targetMidi) ||
@@ -276,10 +330,12 @@ function updateTargetProgress(note: DetectedNote | null): void {
   const matchesTarget = note != null && Math.round(note.midi) === targetMidi
 
   if (!matchesTarget || targetIsPlaying) {
-    targetHeldSince = null
+    rearmTarget()
     targetStatusEl.textContent = targetPrompt(targetMidi)
     return
   }
+
+  if (targetCompleted) return
 
   const now = performance.now()
   targetHeldSince ??= now
@@ -323,7 +379,7 @@ function setKeyboardOctave(next: number): void {
   keyboardOctave = Math.max(2, Math.min(6, next))
   octaveValueEl.textContent = String(keyboardOctave)
   const base = (keyboardOctave + 1) * 12
-  renderKeyboard(keyboardEl, 48, 84, base)
+  renderKeyboard(keyboardEl, 48, 84, base, keyLabels)
   if (targetMidi != null) {
     setKeyState(keyboardEl, targetMidi, 'target', true)
     if (targetCompleted) {
@@ -448,14 +504,16 @@ async function startListening(): Promise<void> {
     harmonics.clear()
     smoothedCents = 0
     lastNote = null
-    targetHeldSince = null
+    rearmTarget()
 
     await capture.start((chunk) => {
       ring.push(chunk)
       void runInference()
-    })
+    }, inputSourceEl.value || undefined)
 
     listening = true
+    inputSourceEl.disabled = true
+    await refreshInputSources()
     setListenLabel('stop listening', 'listening')
     // Every listen session is a take — stop listening opens it in the scope.
     if ('MediaRecorder' in window) capture.startRecording()
@@ -468,6 +526,7 @@ async function startListening(): Promise<void> {
     }, INFER_EVERY_MS)
   } catch (err) {
     listening = false
+    inputSourceEl.disabled = false
     const message =
       err instanceof DOMException && err.name === 'NotAllowedError'
         ? 'Microphone permission denied'
@@ -526,6 +585,7 @@ async function stopListening(): Promise<void> {
     inferTimer = null
   }
   await capture.stop()
+  inputSourceEl.disabled = false
   setListenLabel('start listening')
   levelFillEl.style.width = '0%'
   targetHeldSince = null
@@ -579,6 +639,7 @@ window.addEventListener('keydown', (event) => {
     event.ctrlKey ||
     event.altKey ||
     event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLSelectElement ||
     event.target instanceof HTMLTextAreaElement
   ) {
     return
@@ -592,31 +653,30 @@ window.addEventListener('keydown', (event) => {
 
   if (event.repeat) return
 
-  const key = event.key.toLowerCase()
-  if (key === 'z') {
+  // Physical key positions (event.code), so QWERTZ Y/Z match the piano row.
+  if (event.code === OCTAVE_DOWN_CODE) {
     setKeyboardOctave(keyboardOctave - 1)
     event.preventDefault()
     return
   }
-  if (key === 'x') {
+  if (event.code === OCTAVE_UP_CODE) {
     setKeyboardOctave(keyboardOctave + 1)
     event.preventDefault()
     return
   }
 
-  const step = KEYBOARD_STEPS[key]
+  const step = KEYBOARD_STEPS[event.code]
   if (step == null) return
   const midi = (keyboardOctave + 1) * 12 + step
-  heldComputerKeys.set(key, midi)
+  heldComputerKeys.set(event.code, midi)
   playNote(midi)
   event.preventDefault()
 })
 
 window.addEventListener('keyup', (event) => {
-  const key = event.key.toLowerCase()
-  const midi = heldComputerKeys.get(key)
+  const midi = heldComputerKeys.get(event.code)
   if (midi == null) return
-  heldComputerKeys.delete(key)
+  heldComputerKeys.delete(event.code)
   releaseNote(midi)
 })
 
@@ -704,11 +764,7 @@ enableScrubbing(harmonicCanvas, (clientX) => harmonics.timeAtClientX(clientX))
 holdSecondsInput.addEventListener('change', () => {
   const seconds = targetHoldSeconds()
   holdSecondsInput.value = String(seconds)
-  targetHeldSince = null
-  targetCompleted = false
-  keyboardEl.querySelectorAll('.key.achieved').forEach((key) => {
-    key.classList.remove('achieved')
-  })
+  rearmTarget()
   if (targetMidi != null) targetStatusEl.textContent = targetPrompt(targetMidi)
 })
 
@@ -739,6 +795,10 @@ window.addEventListener('resize', () => {
 
 async function boot(): Promise<void> {
   animate()
+  void refreshInputSources()
+  navigator.mediaDevices?.addEventListener('devicechange', () => {
+    if (!listening) void refreshInputSources()
+  })
   try {
     setListenLabel('Loading F0 model…')
     await onnx.initialize()

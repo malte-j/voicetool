@@ -2,31 +2,86 @@ import { NOTE_NAMES } from './pitch'
 
 const WHITE = [0, 2, 4, 5, 7, 9, 11]
 const BLACK = [1, 3, 6, 8, 10]
+
+/** Physical key codes (QWERTY positions) → semitone steps from the playable C. */
 export const KEYBOARD_STEPS: Record<string, number> = {
-  a: 0,
-  w: 1,
-  s: 2,
-  e: 3,
-  d: 4,
-  f: 5,
-  t: 6,
-  g: 7,
-  y: 8,
-  h: 9,
-  u: 10,
-  j: 11,
-  k: 12,
+  KeyA: 0,
+  KeyW: 1,
+  KeyS: 2,
+  KeyE: 3,
+  KeyD: 4,
+  KeyF: 5,
+  KeyT: 6,
+  KeyG: 7,
+  KeyY: 8,
+  KeyH: 9,
+  KeyU: 10,
+  KeyJ: 11,
+  KeyK: 12,
 }
 
-const STEP_KEYS = Object.fromEntries(
-  Object.entries(KEYBOARD_STEPS).map(([key, step]) => [step, key.toUpperCase()]),
+export const OCTAVE_DOWN_CODE = 'KeyZ'
+export const OCTAVE_UP_CODE = 'KeyX'
+
+/** QWERTY fallbacks; replaced by layout-map glyphs when the browser provides them. */
+export const DEFAULT_CODE_LABELS: Record<string, string> = {
+  KeyA: 'A',
+  KeyW: 'W',
+  KeyS: 'S',
+  KeyE: 'E',
+  KeyD: 'D',
+  KeyF: 'F',
+  KeyT: 'T',
+  KeyG: 'G',
+  KeyY: 'Y',
+  KeyH: 'H',
+  KeyU: 'U',
+  KeyJ: 'J',
+  KeyK: 'K',
+  KeyZ: 'Z',
+  KeyX: 'X',
+}
+
+const STEP_CODES = Object.fromEntries(
+  Object.entries(KEYBOARD_STEPS).map(([code, step]) => [step, code]),
 )
+
+type LayoutKeyboard = {
+  getLayoutMap: () => Promise<ReadonlyMap<string, string>>
+  addEventListener?: (type: 'layoutchange', listener: () => void) => void
+}
+
+function layoutKeyboard(): LayoutKeyboard | undefined {
+  return (navigator as Navigator & { keyboard?: LayoutKeyboard }).keyboard
+}
+
+/** Labels for the active keyboard layout (e.g. Y↔Z on German QWERTZ). */
+export async function codeLabels(): Promise<Record<string, string>> {
+  const labels = { ...DEFAULT_CODE_LABELS }
+  const keyboard = layoutKeyboard()
+  if (!keyboard?.getLayoutMap) return labels
+  try {
+    const map = await keyboard.getLayoutMap()
+    for (const code of Object.keys(labels)) {
+      const char = map.get(code)
+      if (char && char.length === 1) labels[code] = char.toUpperCase()
+    }
+  } catch {
+    // Permission or unsupported — keep QWERTY labels.
+  }
+  return labels
+}
+
+export function onKeyboardLayoutChange(listener: () => void): void {
+  layoutKeyboard()?.addEventListener?.('layoutchange', listener)
+}
 
 export function renderKeyboard(
   container: HTMLElement,
   startMidi = 48,
   endMidi = 84,
   playableBaseMidi = 60,
+  labels: Record<string, string> = DEFAULT_CODE_LABELS,
 ): void {
   container.replaceChildren()
   container.classList.add('keyboard')
@@ -44,11 +99,11 @@ export function renderKeyboard(
     key.setAttribute('aria-label', `${name}${octave}`)
     key.tabIndex = 0
 
-    const computerKey = STEP_KEYS[midi - playableBaseMidi]
-    if (computerKey) {
+    const computerCode = STEP_CODES[midi - playableBaseMidi]
+    if (computerCode) {
       const shortcut = document.createElement('span')
       shortcut.className = 'shortcut-label'
-      shortcut.textContent = computerKey
+      shortcut.textContent = labels[computerCode] ?? DEFAULT_CODE_LABELS[computerCode]
       key.append(shortcut)
     }
 

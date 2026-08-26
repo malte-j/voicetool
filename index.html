@@ -14,6 +14,31 @@
     <div id="app">
       <main class="stage">
         <section class="detector" aria-live="polite">
+          <div class="capture-bar">
+            <img class="brand-mark" src="/logo.svg" alt="Voicetool">
+
+            <label class="monitor-control" title="Use headphones to prevent feedback">
+              <input type="checkbox" id="monitorInput">
+              Monitor input
+            </label>
+
+            <div class="listen-controls">
+              <label class="input-source">
+                <span class="visually-hidden">Input source</span>
+                <select id="inputSource" aria-label="Input source">
+                  <option value="">Default input</option>
+                </select>
+              </label>
+              <button type="button" class="listen" id="listenBtn" disabled>
+                <span class="listen-dot" aria-hidden="true"></span>
+                <span id="listenLabel">Loading F0 model…</span>
+              </button>
+              <div class="level" aria-hidden="true">
+                <div class="level-fill" id="levelFill"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="scope device">
             <div class="transport" id="transport" hidden>
               <button type="button" id="playBtn" class="transport-play">
@@ -55,17 +80,6 @@
               <p class="cents-value" id="centsValue">0 ¢</p>
             </div>
 
-            <div class="level-block">
-              <span class="control-label">Input level</span>
-              <div class="level" aria-hidden="true">
-                <div class="level-fill" id="levelFill"></div>
-              </div>
-            </div>
-
-            <button type="button" class="listen" id="listenBtn" disabled>
-              <span class="listen-dot" aria-hidden="true"></span>
-              <span id="listenLabel">Loading F0 model…</span>
-            </button>
           </div>
 
           <section class="instrument" aria-label="Playable synthesizer keyboard">
@@ -82,10 +96,6 @@
                 <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave</p>
                 <p class="record-status" id="recordStatus"></p>
                 <div class="instrument-settings">
-                  <label class="monitor-control" title="Use headphones to prevent feedback">
-                    <input type="checkbox" id="monitorInput">
-                    Monitor input
-                  </label>
                   <label class="hold-control">
                     Hold
                     <input type="number" id="holdSeconds" min="0.5" max="10" step="0.5" value="2" aria-label="Seconds to hold target note">

@@ -19,7 +19,7 @@ export class AudioCapture {
   private running = false
   private carry = new Float32Array(0)
 
-  async start(onChunk: AudioChunkHandler): Promise<void> {
+  async start(onChunk: AudioChunkHandler, deviceId?: string): Promise<void> {
     if (this.running) return
 
     const audioConstraints: MediaTrackConstraints & {
@@ -30,6 +30,7 @@ export class AudioCapture {
       autoGainControl: false,
       channelCount: 1,
       latency: { ideal: 0 },
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
     }
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: audioConstraints,

@@ -51,14 +51,21 @@ a {
   text-decoration: underline;
 }
 
+/* Keep keyboard focus visible without inheriting each browser's blue ring. */
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  box-shadow: 0 0 0 1px var(--text-dim);
+}
+
 /* ---------- Stage layout ---------- */
 
 .stage {
-  /* Auto margins center the stage in the viewport but collapse to 0 once the
-     content overflows, so the top stays reachable on short screens. */
-  flex: 0 0 auto;
-  width: min(1180px, 100%);
-  margin: auto;
+  flex: 1 0 auto;
+  width: 100%;
+  margin: 0;
   padding: 12px 12px 16px;
 }
 
@@ -186,16 +193,16 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
-.level-block {
-  margin: 12px 10px 14px;
-}
-
 .level {
-  height: 8px;
-  background: var(--display);
-  border: 1px solid var(--border-soft);
-  border-radius: 1px;
+  position: absolute;
+  z-index: 1;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
+  height: 3px;
+  border-radius: 0 0 1px 1px;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .level-fill {
@@ -205,6 +212,90 @@ a {
   transition: width 0.08s linear;
 }
 
+/* Full-width capture strip: meter left, source and action right. */
+.capture-bar {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-mark {
+  display: block;
+  width: auto;
+  height: 24px;
+  flex: none;
+}
+
+.capture-bar > .monitor-control {
+  margin-left: auto;
+}
+
+.listen-controls {
+  position: relative;
+  display: flex;
+  gap: 0;
+  flex: 0 1 360px;
+  margin: 0;
+}
+
+.input-source {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.input-source::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-dim);
+  transform: translateY(-35%);
+  pointer-events: none;
+}
+
+.input-source select {
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  min-height: 31px;
+  padding: 6px 20px 6px 7px;
+  font: inherit;
+  color: var(--text);
+  background: var(--display);
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 2px 0 0 2px;
+  outline: none;
+}
+
+.input-source select:focus-visible {
+  border-color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+.input-source select:disabled {
+  opacity: 0.55;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Listen toggle: primary when idle (start), muted when listening (stop). */
 .listen {
   appearance: none;
@@ -212,14 +303,15 @@ a {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  margin: auto 10px 12px;
+  flex: 0 0 auto;
+  margin: 0;
   padding: 7px 10px;
   cursor: pointer;
   font: inherit;
   color: #fff;
   background: var(--rec);
   border: 1px solid #c22a22;
-  border-radius: 2px;
+  border-radius: 0 2px 2px 0;
 }
 
 .listen:hover:not(:disabled):not(.active) {
@@ -689,6 +781,15 @@ kbd {
    shortcuts are useless without a physical keyboard anyway. The centered
    credit also collides with the footer controls once that row wraps. */
 @media (max-width: 620px) {
+  .capture-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .listen-controls {
+    flex-basis: 100%;
+  }
+
   .instrument-controls {
     gap: 8px;
   }
