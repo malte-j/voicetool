@@ -17,9 +17,15 @@
           <div class="capture-bar">
             <img class="brand-mark" src="/logo.svg" alt="Voicetool">
 
+            <p class="karaoke-status" id="karaokeStatus" role="status"></p>
+            <label class="karaoke-upload" id="karaokeUpload">
+              <input type="file" id="karaokeFile" accept="audio/mpeg,audio/mp3,.mp3" disabled>
+              <span>load vocal sample</span>
+            </label>
+
             <label class="monitor-control" title="Use headphones to prevent feedback">
-              <input type="checkbox" id="monitorInput">
-              Monitor input
+              <input type="checkbox" id="monitorInput" role="switch">
+              <span>monitor</span>
             </label>
 
             <div class="listen-controls">
@@ -29,6 +35,23 @@
                   <option value="">Default input</option>
                 </select>
               </label>
+              <div class="mic-gain-control" id="micGainControl">
+                <button
+                  type="button"
+                  class="mic-gain-button"
+                  id="micGainButton"
+                  aria-label="Microphone boost"
+                  aria-controls="micGainPopover"
+                  aria-expanded="false"
+                  title="Microphone boost"
+                >
+                  <span id="micGainButtonValue">+0</span>
+                </button>
+                <div class="mic-gain-popover" id="micGainPopover" hidden>
+                  <output id="micGainValue" for="micGain">0 dB</output>
+                  <input type="range" id="micGain" min="0" max="24" step="1" value="0" aria-label="Microphone boost in decibels">
+                </div>
+              </div>
               <button type="button" class="listen" id="listenBtn" disabled>
                 <span class="listen-dot" aria-hidden="true"></span>
                 <span id="listenLabel">Loading F0 model…</span>
@@ -37,6 +60,7 @@
                 <div class="level-fill" id="levelFill"></div>
               </div>
             </div>
+
           </div>
 
           <div class="scope device">
@@ -45,7 +69,24 @@
                 <span class="transport-glyph" id="playGlyph" aria-hidden="true"></span>
                 <span id="playLabel">Play</span>
               </button>
+              <button type="button" id="backBtn" class="transport-button" title="Go back 5 seconds">−5 sec</button>
               <span class="transport-time" id="transportTime">0:00.0 / 0:00.0</span>
+              <div class="zoom-controls" aria-label="Timeline zoom">
+                <button type="button" id="zoomOutBtn" class="transport-button zoom-button" title="Zoom out" aria-label="Zoom out">−</button>
+                <span id="zoomLevel" class="zoom-level">100%</span>
+                <button type="button" id="zoomInBtn" class="transport-button zoom-button" title="Zoom in" aria-label="Zoom in">+</button>
+              </div>
+              <span class="transport-mode" id="transportMode"></span>
+              <div class="karaoke-audio-controls" id="karaokeAudioControls" aria-label="Karaoke playback sources" hidden>
+                <label title="Use headphones to prevent feedback">
+                  <input type="checkbox" id="karaokeMicPlayback">
+                  My playback
+                </label>
+                <label>
+                  <input type="checkbox" id="karaokeSongPlayback" checked>
+                  Song MP3
+                </label>
+              </div>
               <a id="recordingDownload" class="transport-link" download>Download</a>
               <button type="button" id="closeTakeBtn" class="transport-close">Back to live</button>
             </div>

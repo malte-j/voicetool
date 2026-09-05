@@ -10,12 +10,15 @@ export class AudioCapture {
   private context: AudioContext | null = null
   private stream: MediaStream | null = null
   private source: MediaStreamAudioSourceNode | null = null
+  private inputGain: GainNode | null = null
   private processor: ScriptProcessorNode | null = null
   private silentGain: GainNode | null = null
   private monitorGain: GainNode | null = null
+  private recordingDestination: MediaStreamAudioDestinationNode | null = null
   private recorder: MediaRecorder | null = null
   private recordedChunks: Blob[] = []
   private monitoring = false
+  private inputGainDb = 0
   private running = false
   private carry = new Float32Array(0)
 
@@ -44,12 +47,15 @@ export class AudioCapture {
     }
 
     this.source = this.context.createMediaStreamSource(this.stream)
+    this.inputGain = this.context.createGain()
+    this.inputGain.gain.value = 10 ** (this.inputGainDb / 20)
     // ScriptProcessor is deprecated but widely supported and sufficient here.
     this.processor = this.context.createScriptProcessor(1024, 1, 1)
     this.silentGain = this.context.createGain()
     this.silentGain.gain.value = 0
     this.monitorGain = this.context.createGain()
     this.monitorGain.gain.value = this.monitoring ? 1 : 0
+    this.recordingDestination = this.context.createMediaStreamDestination()
 
     this.processor.onaudioprocess = (event) => {
       if (!this.running || !this.context) return
@@ -58,8 +64,10 @@ export class AudioCapture {
       if (resampled.length > 0) onChunk(resampled)
     }
 
-    this.source.connect(this.processor)
-    this.source.connect(this.monitorGain)
+    this.source.connect(this.inputGain)
+    this.inputGain.connect(this.processor)
+    this.inputGain.connect(this.monitorGain)
+    this.inputGain.connect(this.recordingDestination)
     this.processor.connect(this.silentGain)
     this.silentGain.connect(this.context.destination)
     this.monitorGain.connect(this.context.destination)
@@ -74,8 +82,18 @@ export class AudioCapture {
     )
   }
 
+  setInputGain(decibels: number): void {
+    this.inputGainDb = Math.max(0, Math.min(24, decibels))
+    const gain = 10 ** (this.inputGainDb / 20)
+    this.inputGain?.gain.setTargetAtTime(
+      gain,
+      this.context?.currentTime ?? 0,
+      0.01,
+    )
+  }
+
   startRecording(): void {
-    if (!this.stream) throw new Error('Start listening before recording')
+    if (!this.recordingDestination) throw new Error('Start listening before recording')
     if (this.recorder?.state === 'recording') return
 
     const mimeType = [
@@ -85,7 +103,7 @@ export class AudioCapture {
     ].find((type) => MediaRecorder.isTypeSupported(type))
     this.recordedChunks = []
     this.recorder = new MediaRecorder(
-      this.stream,
+      this.recordingDestination.stream,
       mimeType ? { mimeType } : undefined,
     )
     this.recorder.addEventListener('dataavailable', (event) => {
@@ -117,12 +135,16 @@ export class AudioCapture {
     this.running = false
     this.processor?.disconnect()
     this.source?.disconnect()
+    this.inputGain?.disconnect()
     this.silentGain?.disconnect()
     this.monitorGain?.disconnect()
+    this.recordingDestination?.disconnect()
     this.processor = null
     this.source = null
+    this.inputGain = null
     this.silentGain = null
     this.monitorGain = null
+    this.recordingDestination = null
     this.carry = new Float32Array(0)
 
     this.stream?.getTracks().forEach((t) => t.stop())

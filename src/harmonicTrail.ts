@@ -60,6 +60,8 @@ export class HarmonicTrail {
   private captured: HarmonicPoint[] = []
   private review: RecordedHarmonics | null = null
   private playhead = 0
+  private reviewViewStart = 0
+  private reviewViewEnd = 0
 
   constructor(canvas: HTMLCanvasElement, windowSec = 8) {
     const ctx = canvas.getContext('2d')
@@ -127,10 +129,14 @@ export class HarmonicTrail {
   showRecording(recording: RecordedHarmonics): void {
     this.review = { ...recording, duration: Math.max(recording.duration, 0.05) }
     this.playhead = 0
+    this.reviewViewStart = 0
+    this.reviewViewEnd = this.review.duration
   }
 
   closeRecording(): void {
     this.review = null
+    this.reviewViewStart = 0
+    this.reviewViewEnd = 0
   }
 
   get reviewing(): boolean {
@@ -142,12 +148,20 @@ export class HarmonicTrail {
     this.playhead = Math.max(0, Math.min(this.review.duration, seconds))
   }
 
+  /** Uses the pitch scope's horizontal viewport so both review canvases stay aligned. */
+  setReviewViewport(start: number, end: number): void {
+    if (!this.review) return
+    this.reviewViewStart = Math.max(0, Math.min(this.review.duration, start))
+    this.reviewViewEnd = Math.max(this.reviewViewStart, Math.min(this.review.duration, end))
+  }
+
   /** Time under a pointer, for click-and-drag scrubbing. */
   timeAtClientX(clientX: number): number {
     if (!this.review) return 0
     const rect = this.canvas.getBoundingClientRect()
     const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
-    return Math.max(0, Math.min(1, ratio)) * this.review.duration
+    return this.reviewViewStart +
+      Math.max(0, Math.min(1, ratio)) * (this.reviewViewEnd - this.reviewViewStart)
   }
 
   /** Voiced point nearest `seconds`, or null where the take is silent. */
@@ -211,7 +225,7 @@ export class HarmonicTrail {
       return
     }
 
-    this.drawTimeGrid(w, h, this.windowSec, false)
+    this.drawTimeGrid(w, h, 0, this.windowSec, false)
 
     const t0 = now - this.windowSec
     const toX = (t: number): number => ((t - t0) / this.windowSec) * w
@@ -231,9 +245,11 @@ export class HarmonicTrail {
   private drawReview(w: number, h: number, scale: number): void {
     const review = this.review!
     const ctx = this.ctx
-    const toX = (t: number): number => (t / review.duration) * w
+    const start = this.reviewViewStart
+    const span = Math.max(0.001, this.reviewViewEnd - start)
+    const toX = (t: number): number => ((t - start) / span) * w
 
-    this.drawTimeGrid(w, h, review.duration, true)
+    this.drawTimeGrid(w, h, start, span, true)
     this.strokeSeries(review.points, toX, scale, h)
 
     const x = Math.round(toX(this.playhead)) + 0.5
@@ -345,7 +361,13 @@ export class HarmonicTrail {
     }
   }
 
-  private drawTimeGrid(w: number, h: number, span: number, labelled: boolean): void {
+  private drawTimeGrid(
+    w: number,
+    h: number,
+    start: number,
+    span: number,
+    labelled: boolean,
+  ): void {
     const ctx = this.ctx
     const step = tickStep(span, w)
     const decimals = step < 1 ? 1 : 0
@@ -357,9 +379,10 @@ export class HarmonicTrail {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
 
-    for (let i = 1; i * step < span; i++) {
-      const seconds = i * step
-      const x = Math.round((seconds / span) * w) + 0.5
+    const end = start + span
+    for (let seconds = Math.ceil(start / step) * step; seconds < end; seconds += step) {
+      if (seconds <= start + 1e-6) continue
+      const x = Math.round(((seconds - start) / span) * w) + 0.5
       ctx.beginPath()
       ctx.moveTo(x, 0)
       ctx.lineTo(x, h)

@@ -10,6 +10,8 @@ export class RecordingPlayer {
   private context: AudioContext | null = null
   private buffer: AudioBuffer | null = null
   private source: AudioBufferSourceNode | null = null
+  private output: GainNode | null = null
+  private muted = false
   /** Context clock reading when the current source started. */
   private startedAt = 0
   /** Position in the buffer that the current source started from. */
@@ -21,7 +23,12 @@ export class RecordingPlayer {
   async load(blob: Blob): Promise<number> {
     this.stopSource()
     const context = this.ensureContext()
-    this.buffer = await context.decodeAudioData(await blob.arrayBuffer())
+    return this.loadBuffer(await context.decodeAudioData(await blob.arrayBuffer()))
+  }
+
+  loadBuffer(buffer: AudioBuffer): number {
+    this.stopSource()
+    this.buffer = buffer
     this.offset = 0
     return this.buffer.duration
   }
@@ -37,7 +44,7 @@ export class RecordingPlayer {
 
     const source = context.createBufferSource()
     source.buffer = this.buffer
-    source.connect(context.destination)
+    source.connect(this.output!)
     source.addEventListener('ended', () => {
       if (this.source !== source) return
       this.source = null
@@ -93,6 +100,15 @@ export class RecordingPlayer {
     return this.buffer != null
   }
 
+  setMuted(muted: boolean): void {
+    this.muted = muted
+    this.output?.gain.setTargetAtTime(
+      muted ? 0 : 1,
+      this.context?.currentTime ?? 0,
+      0.01,
+    )
+  }
+
   unload(): void {
     this.stopSource()
     this.buffer = null
@@ -113,7 +129,12 @@ export class RecordingPlayer {
   }
 
   private ensureContext(): AudioContext {
-    this.context ??= new AudioContext()
+    if (!this.context) {
+      this.context = new AudioContext()
+      this.output = this.context.createGain()
+      this.output.gain.value = this.muted ? 0 : 1
+      this.output.connect(this.context.destination)
+    }
     return this.context
   }
 }

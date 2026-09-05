@@ -228,22 +228,60 @@ button:focus-visible {
   flex: none;
 }
 
-.capture-bar > .monitor-control {
+.capture-bar > .karaoke-upload {
   margin-left: auto;
+}
+
+.karaoke-upload {
+  display: inline-flex;
+  align-items: center;
+  height: 31px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-hi);
+  border: 0;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.karaoke-upload:hover {
+  background: #e2e2e2;
+}
+
+.karaoke-upload.busy {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.karaoke-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.karaoke-status {
+  max-width: 240px;
+  margin: 0;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .listen-controls {
   position: relative;
   display: flex;
   gap: 0;
-  flex: 0 1 360px;
+  flex: 0 1 auto;
   margin: 0;
 }
 
 .input-source {
   position: relative;
+  width: 180px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 180px;
 }
 
 .input-source::after {
@@ -269,14 +307,12 @@ button:focus-visible {
   font: inherit;
   color: var(--text);
   background: var(--display);
-  border: 1px solid var(--border);
-  border-right: 0;
+  border: 0;
   border-radius: 2px 0 0 2px;
   outline: none;
 }
 
 .input-source select:focus-visible {
-  border-color: var(--text-dim);
   box-shadow: inset 0 0 0 1px var(--border-soft);
 }
 
@@ -413,7 +449,8 @@ button:focus-visible {
   display: none;
 }
 
-.transport-play {
+.transport-play,
+.transport-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -427,8 +464,25 @@ button:focus-visible {
   font: inherit;
 }
 
-.transport-play:hover:not(:disabled) {
+.transport-play:hover:not(:disabled),
+.transport-button:hover:not(:disabled) {
   background: #e2e2e2;
+}
+
+.transport-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.transport-button {
+  height: 22px;
+  padding: 0 9px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-hi);
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+  font: inherit;
 }
 
 .transport-play:disabled {
@@ -462,6 +516,67 @@ button:focus-visible {
   color: var(--text);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.zoom-button {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.zoom-level {
+  min-width: 38px;
+  color: var(--text-dim);
+  text-align: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport-mode {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.karaoke-audio-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.karaoke-audio-controls[hidden] {
+  display: none;
+}
+
+.karaoke-audio-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.karaoke-audio-controls input {
+  margin: 0;
+  accent-color: var(--accent-deep);
+}
+
+body.karaoke-mode .trail {
+  background: #d4d4d4;
+}
+
+body.karaoke-mode .harmonics {
+  display: none;
 }
 
 .transport-link {
@@ -521,7 +636,8 @@ button:focus-visible {
 
 .instrument-settings,
 .hold-control,
-.monitor-control {
+.monitor-control,
+.mic-gain-control {
   display: flex;
   align-items: center;
 }
@@ -530,20 +646,116 @@ button:focus-visible {
   gap: 14px;
 }
 
-.hold-control,
-.monitor-control {
+.hold-control {
   gap: 5px;
   color: var(--text-dim);
   letter-spacing: 0.04em;
 }
 
 .monitor-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 31px;
+  padding: 0 11px;
   cursor: pointer;
+  color: var(--text-dim);
+  background: var(--surface-hi);
+  border: 0;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  user-select: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .monitor-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.monitor-control:hover {
+  background: #e2e2e2;
+}
+
+.monitor-control:has(input:focus-visible) {
+  box-shadow: 0 0 0 1px var(--text-dim);
+}
+
+.monitor-control:has(input:checked) {
+  color: var(--text);
+  background: var(--accent);
+}
+
+.mic-gain-control {
+  position: relative;
+  flex: none;
+  white-space: nowrap;
+}
+
+.mic-gain-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 31px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: var(--surface-hi);
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 1px 0 var(--border-soft);
+}
+
+.mic-gain-button:hover,
+.mic-gain-button[aria-expanded='true'] {
+  color: var(--text);
+  background: #e2e2e2;
+}
+
+.mic-gain-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 50px;
+  padding: 8px 7px 10px;
+  background: var(--surface-hi);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 18%);
+  transform: translateX(-50%);
+}
+
+.mic-gain-popover[hidden] {
+  display: none;
+}
+
+.mic-gain-popover input {
+  width: 18px;
+  height: 112px;
   margin: 0;
+  writing-mode: vertical-lr;
+  direction: rtl;
   accent-color: var(--accent-deep);
+}
+
+.mic-gain-popover output {
+  min-width: 33px;
+  color: var(--text);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .hold-control input {
@@ -786,8 +998,25 @@ kbd {
     gap: 8px;
   }
 
+  .karaoke-status {
+    max-width: calc(100% - 150px);
+  }
+
   .listen-controls {
     flex-basis: 100%;
+  }
+
+  .input-source {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .capture-bar > .karaoke-upload {
+    margin-left: 0;
+  }
+
+  .transport {
+    flex-wrap: wrap;
   }
 
   .instrument-controls {

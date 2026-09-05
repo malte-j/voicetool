@@ -15,10 +15,21 @@ export interface PushOptions {
   snap?: boolean
 }
 
-/** A captured take: the same trail points, timed from the start of the recording. */
+/** A captured take with sung pitch points and played-note blocks on one timeline. */
 export interface RecordedTrail {
   points: TrailPoint[]
+  playedNotes: PlayedNoteBlock[]
   duration: number
+}
+
+interface PerformancePoint extends TrailPoint {
+  attempt: number
+}
+
+export interface PlayedNoteBlock {
+  midi: number
+  start: number
+  end: number | null
 }
 
 /** Weight given to a fresh detection when blending in MIDI space. */
@@ -53,13 +64,22 @@ const REVIEW_MIN_SPAN = 14
 /** How far from the playhead a point may sit and still name the pitch under it. */
 const PLAYHEAD_TOLERANCE_SEC = 0.12
 const PLAYHEAD_COLOR = '#1a1a1a'
+const PLAYED_NOTE_FILL = '#ffb000'
+const PLAYED_NOTE_STROKE = '#8a6320'
 const TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
 /** Time gridlines aim for roughly this spacing before the next step up is used. */
 const TICK_TARGET_PX = 110
+/** Keep enough context for pitch shapes even at maximum review zoom. */
+const MIN_REVIEW_WINDOW_SEC = 2
+/** Inference arrives at roughly 14 Hz; this radius replaces the same timeline slot. */
+const PERFORMANCE_OVERWRITE_SEC = 0.1
+/** Do not join performance readings across a seek or separate listening pass. */
+const PERFORMANCE_JOIN_MAX_SEC = 0.25
 
 /** Canvas pitch trail rendered in MIDI space over a rolling time window. */
 export class PitchTrail {
   private points: TrailPoint[] = []
+  private playedNotes: PlayedNoteBlock[] = []
   private readonly windowSec: number
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
@@ -83,8 +103,14 @@ export class PitchTrail {
   private capturing = false
   private captureStart = 0
   private captured: TrailPoint[] = []
+  private capturedPlayedNotes: PlayedNoteBlock[] = []
   private review: RecordedTrail | null = null
+  private performance: PerformancePoint[] = []
+  private performanceAttempt = 0
+  private lastPerformanceT = Number.NaN
   private playhead = 0
+  private reviewZoom = 1
+  private reviewViewStart = 0
 
   constructor(canvas: HTMLCanvasElement, windowSec = 8) {
     const ctx = canvas.getContext('2d')
@@ -167,8 +193,41 @@ export class PitchTrail {
     this.trim(point.t)
   }
 
+  /** Starts a piano-roll block for a note played on the on-screen/computer keyboard. */
+  beginPlayedNote(midi: number, now = performance.now() / 1000): void {
+    if (this.playedNotes.some((note) => note.midi === midi && note.end == null)) return
+    this.playedNotes.push({ midi, start: now, end: null })
+    if (this.capturing) {
+      this.capturedPlayedNotes.push({
+        midi,
+        start: Math.max(0, now - this.captureStart),
+        end: null,
+      })
+    }
+    this.trim(now)
+  }
+
+  /** Fixes the right edge of the active piano-roll block at key release. */
+  endPlayedNote(midi: number, now = performance.now() / 1000): void {
+    for (let i = this.playedNotes.length - 1; i >= 0; i--) {
+      const note = this.playedNotes[i]
+      if (note.midi !== midi || note.end != null) continue
+      note.end = Math.max(note.start, now)
+      break
+    }
+    if (this.capturing) {
+      for (let i = this.capturedPlayedNotes.length - 1; i >= 0; i--) {
+        const note = this.capturedPlayedNotes[i]
+        if (note.midi !== midi || note.end != null) continue
+        note.end = Math.max(note.start, now - this.captureStart)
+        break
+      }
+    }
+  }
+
   clear(): void {
     this.points = []
+    this.playedNotes = []
     this.smoothMidi = NaN
     this.pendingJump = null
     this.lastVoicedT = -Infinity
@@ -183,27 +242,46 @@ export class PitchTrail {
     this.capturing = true
     this.captureStart = now
     this.captured = []
+    this.capturedPlayedNotes = this.playedNotes
+      .filter((note) => note.end == null)
+      .map((note) => ({ midi: note.midi, start: 0, end: null }))
   }
 
   stopRecording(now = performance.now() / 1000): RecordedTrail {
     const points = this.captured
     const duration = this.capturing ? Math.max(0, now - this.captureStart) : 0
+    const playedNotes = this.capturedPlayedNotes.map((note) => ({
+      ...note,
+      start: Math.min(duration, note.start),
+      end: Math.min(duration, note.end ?? duration),
+    }))
     this.capturing = false
     this.captured = []
-    return { points, duration }
+    this.capturedPlayedNotes = []
+    return { points, playedNotes, duration }
   }
 
   /** Freezes the scope on a finished take, with a playhead at its start. */
   showRecording(recording: RecordedTrail): void {
     this.review = { ...recording, duration: Math.max(recording.duration, 0.05) }
+    this.performance = []
+    this.performanceAttempt = 0
+    this.lastPerformanceT = Number.NaN
     this.playhead = 0
+    this.reviewZoom = 1
+    this.reviewViewStart = 0
     this.renderSeeded = false
-    this.frameRecording(recording.points)
+    this.frameRecording(recording.points, recording.playedNotes)
   }
 
   closeRecording(): void {
     if (!this.review) return
     this.review = null
+    this.performance = []
+    this.performanceAttempt = 0
+    this.lastPerformanceT = Number.NaN
+    this.reviewZoom = 1
+    this.reviewViewStart = 0
     this.frameRange(octaveLow(this.octaveBase), octaveHigh(this.octaveBase))
   }
 
@@ -222,6 +300,106 @@ export class PitchTrail {
   setPlayhead(seconds: number): void {
     if (!this.review) return
     this.playhead = Math.max(0, Math.min(this.review.duration, seconds))
+    this.keepPlayheadVisible()
+  }
+
+  get zoom(): number {
+    return this.reviewZoom
+  }
+
+  get canZoomIn(): boolean {
+    return !!this.review && this.reviewZoom < this.maxReviewZoom - 1e-6
+  }
+
+  get canZoomOut(): boolean {
+    return !!this.review && this.reviewZoom > 1 + 1e-6
+  }
+
+  get visibleStart(): number {
+    return this.reviewViewStart
+  }
+
+  get visibleEnd(): number {
+    return this.reviewViewStart + this.reviewSpan
+  }
+
+  /** Zooms horizontally around the playhead while keeping it at the same screen position. */
+  setReviewZoom(zoom: number): void {
+    if (!this.review) return
+    const oldSpan = this.reviewSpan
+    const playheadRatio = oldSpan > 0
+      ? (this.playhead - this.reviewViewStart) / oldSpan
+      : 0.5
+    // If the user panned away from the playhead, zoom the visible center instead.
+    const focusRatio = playheadRatio >= 0 && playheadRatio <= 1 ? playheadRatio : 0.5
+    const focusTime = playheadRatio >= 0 && playheadRatio <= 1
+      ? this.playhead
+      : this.reviewViewStart + oldSpan / 2
+    this.reviewZoom = Math.max(1, Math.min(this.maxReviewZoom, zoom))
+    const span = this.reviewSpan
+    this.reviewViewStart = this.clampReviewStart(focusTime - focusRatio * span)
+  }
+
+  /** Zooms around the timeline position beneath a mouse or trackpad gesture. */
+  zoomAtClientX(multiplier: number, clientX: number): void {
+    if (!this.review || !Number.isFinite(multiplier) || multiplier <= 0) return
+    const rect = this.canvas.getBoundingClientRect()
+    const ratio = rect.width > 0
+      ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+      : 0.5
+    const focalTime = this.reviewViewStart + ratio * this.reviewSpan
+    this.reviewZoom = Math.max(
+      1,
+      Math.min(this.maxReviewZoom, this.reviewZoom * multiplier),
+    )
+    this.reviewViewStart = this.clampReviewStart(focalTime - ratio * this.reviewSpan)
+  }
+
+  /** Moves a zoomed review horizontally by a trackpad's pixel scroll distance. */
+  panReviewByPixels(deltaX: number, viewportPixels: number): boolean {
+    if (!this.review || this.reviewZoom <= 1 || viewportPixels <= 0) return false
+    this.reviewViewStart = this.clampReviewStart(
+      this.reviewViewStart + (deltaX / viewportPixels) * this.reviewSpan,
+    )
+    return true
+  }
+
+  /** Add microphone detection against the timeline of a reviewed karaoke target. */
+  pushPerformance(hz: number | null, voiced: boolean, seconds: number): void {
+    if (!this.review) return
+    const t = Math.max(0, Math.min(this.review.duration, seconds))
+    if (Number.isFinite(this.lastPerformanceT) && Math.abs(t - this.lastPerformanceT) > 0.5) {
+      // Seeking while the mic stays open begins another overwrite pass.
+      this.performanceAttempt++
+    }
+    this.lastPerformanceT = t
+    const raw = hz && voiced ? hzToMidi(hz) : Number.NaN
+    // A new pass is authoritative only where it has reached. Removing a narrow
+    // slot for every reading preserves the rest of earlier attempts.
+    this.performance = this.performance.filter(
+      (point) => point.attempt === this.performanceAttempt ||
+        Math.abs(point.t - t) > PERFORMANCE_OVERWRITE_SEC,
+    )
+    this.performance.push({
+      t,
+      midi: raw,
+      voiced: Number.isFinite(raw),
+      color: Number.isFinite(raw) ? tuningColor(midiToCents(raw)) : '',
+      attempt: this.performanceAttempt,
+    })
+    this.performance.sort((a, b) => a.t - b.t)
+  }
+
+  clearPerformance(): void {
+    this.performance = []
+    this.performanceAttempt = 0
+    this.lastPerformanceT = Number.NaN
+  }
+
+  /** Marks the next karaoke recording as a new overwrite pass. */
+  startPerformancePass(): void {
+    this.performanceAttempt++
+    this.lastPerformanceT = Number.NaN
   }
 
   /** Time under a pointer, for click-and-drag scrubbing. */
@@ -229,7 +407,7 @@ export class PitchTrail {
     if (!this.review) return 0
     const rect = this.canvas.getBoundingClientRect()
     const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
-    return Math.max(0, Math.min(1, ratio)) * this.review.duration
+    return this.reviewViewStart + Math.max(0, Math.min(1, ratio)) * this.reviewSpan
   }
 
   /** Voiced point nearest `seconds`, or null where the take is silent. */
@@ -257,13 +435,17 @@ export class PitchTrail {
   }
 
   /** Fits the viewport to the pitches actually sung, so a take fills the scope. */
-  private frameRecording(points: TrailPoint[]): void {
+  private frameRecording(points: TrailPoint[], playedNotes: PlayedNoteBlock[] = []): void {
     let min = Infinity
     let max = -Infinity
     for (const p of points) {
       if (!p.voiced || !Number.isFinite(p.midi)) continue
       min = Math.min(min, p.midi)
       max = Math.max(max, p.midi)
+    }
+    for (const note of playedNotes) {
+      min = Math.min(min, note.midi)
+      max = Math.max(max, note.midi)
     }
     if (!Number.isFinite(min)) return
 
@@ -304,7 +486,10 @@ export class PitchTrail {
       return
     }
 
-    this.drawTimeGrid(w, h, this.windowSec, false)
+    this.drawTimeGrid(w, h, 0, this.windowSec, false)
+
+    const t0 = now - this.windowSec
+    this.drawPlayedNotes(now, t0, w, h, yMin, yMax)
 
     if (!this.points.length) {
       this.renderSeeded = false
@@ -331,7 +516,6 @@ export class PitchTrail {
       this.renderMidi += (head!.midi - this.renderMidi) * (1 - Math.exp(-dt / RENDER_TAU_SEC))
     }
 
-    const t0 = now - this.windowSec
     const markerX = w - MARKER_HALF
     const markerY = midiToY(this.renderMidi, yMin, yMax, h)
 
@@ -358,6 +542,56 @@ export class PitchTrail {
     }
   }
 
+  /** Draw keyboard input as discrete note clips, separate from the sung pitch trail. */
+  private drawPlayedNotes(
+    now: number,
+    t0: number,
+    w: number,
+    h: number,
+    yMin: number,
+    yMax: number,
+  ): void {
+    this.drawNoteBlocks(
+      this.playedNotes,
+      (time) => ((time - t0) / this.windowSec) * w,
+      w,
+      h,
+      yMin,
+      yMax,
+      now,
+    )
+  }
+
+  private drawNoteBlocks(
+    notes: PlayedNoteBlock[],
+    toX: (time: number) => number,
+    w: number,
+    h: number,
+    yMin: number,
+    yMax: number,
+    openEnd?: number,
+  ): void {
+    const ctx = this.ctx
+    const blockHeight = Math.max(4, (h / (yMax - yMin)) * 0.72)
+
+    for (const note of notes) {
+      const end = note.end ?? openEnd
+      if (end == null) continue
+      const startX = toX(note.start)
+      const endX = toX(end)
+      if (endX < 0 || startX > w) continue
+      const x = Math.max(0, startX)
+      const width = Math.max(2, Math.min(w, endX) - x)
+      const y = midiToY(note.midi, yMin, yMax, h) - blockHeight / 2
+
+      ctx.fillStyle = PLAYED_NOTE_FILL
+      ctx.fillRect(x, y, width, blockHeight)
+      ctx.strokeStyle = PLAYED_NOTE_STROKE
+      ctx.lineWidth = 1
+      ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, width - 1), Math.max(0, blockHeight - 1))
+    }
+  }
+
   /**
    * Runs of segments sharing a colour are stroked as one subpath, so the trail keeps
    * its round joins and stays linear in the number of points.
@@ -368,6 +602,7 @@ export class PitchTrail {
     yMin: number,
     yMax: number,
     h: number,
+    maxJoinSeconds = Number.POSITIVE_INFINITY,
   ): void {
     const ctx = this.ctx
     let open = false
@@ -375,6 +610,7 @@ export class PitchTrail {
     let prevX = 0
     let prevY = 0
     let hasPrev = false
+    let prevT = 0
 
     for (const p of points) {
       if (!p.voiced || !Number.isFinite(p.midi)) {
@@ -383,6 +619,11 @@ export class PitchTrail {
       }
       const x = toX(p.t)
       const y = midiToY(p.midi, yMin, yMax, h)
+      if (hasPrev && p.t - prevT > maxJoinSeconds) {
+        if (open) ctx.stroke()
+        open = false
+        hasPrev = false
+      }
       if (hasPrev) {
         if (!open || p.color !== openColor) {
           if (open) ctx.stroke()
@@ -399,6 +640,7 @@ export class PitchTrail {
       }
       prevX = x
       prevY = y
+      prevT = p.t
       hasPrev = true
     }
     if (open) ctx.stroke()
@@ -408,14 +650,30 @@ export class PitchTrail {
   private drawReview(w: number, h: number, yMin: number, yMax: number): void {
     const review = this.review!
     const ctx = this.ctx
-    const toX = (t: number): number => (t / review.duration) * w
+    const start = this.reviewViewStart
+    const span = this.reviewSpan
+    const toX = (t: number): number => ((t - start) / span) * w
 
-    this.drawTimeGrid(w, h, review.duration, true)
+    this.drawTimeGrid(w, h, start, span, true)
+    this.drawNoteBlocks(review.playedNotes, toX, w, h, yMin, yMax)
 
     ctx.lineWidth = 1.5
     ctx.lineJoin = 'round'
     ctx.lineCap = 'butt'
     this.strokeTrail(review.points, toX, yMin, yMax, h)
+
+    // Karaoke microphone readings sit above the blue reference melody.
+    if (this.performance.length) {
+      ctx.lineWidth = 2
+      this.strokeTrail(
+        this.performance,
+        toX,
+        yMin,
+        yMax,
+        h,
+        PERFORMANCE_JOIN_MAX_SEC,
+      )
+    }
 
     const x = Math.round(toX(this.playhead)) + 0.5
     ctx.strokeStyle = PLAYHEAD_COLOR
@@ -443,7 +701,13 @@ export class PitchTrail {
     this.drawNoteLabel(x, y, w, h, point.midi)
   }
 
-  private drawTimeGrid(w: number, h: number, span: number, labelled: boolean): void {
+  private drawTimeGrid(
+    w: number,
+    h: number,
+    start: number,
+    span: number,
+    labelled: boolean,
+  ): void {
     const ctx = this.ctx
     const step = tickStep(span, w)
     const decimals = step < 1 ? 1 : 0
@@ -455,9 +719,10 @@ export class PitchTrail {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
 
-    for (let i = 1; i * step < span; i++) {
-      const seconds = i * step
-      const x = Math.round((seconds / span) * w) + 0.5
+    const end = start + span
+    for (let seconds = Math.ceil(start / step) * step; seconds < end; seconds += step) {
+      if (seconds <= start + 1e-6) continue
+      const x = Math.round(((seconds - start) / span) * w) + 0.5
       ctx.beginPath()
       ctx.moveTo(x, 0)
       ctx.lineTo(x, h)
@@ -553,6 +818,34 @@ export class PitchTrail {
     while (this.points.length && this.points[0].t < cutoff) {
       this.points.shift()
     }
+    this.playedNotes = this.playedNotes.filter(
+      (note) => note.end == null || note.end >= cutoff,
+    )
+  }
+
+  private get maxReviewZoom(): number {
+    return this.review ? Math.max(1, this.review.duration / MIN_REVIEW_WINDOW_SEC) : 1
+  }
+
+  private get reviewSpan(): number {
+    return this.review ? this.review.duration / this.reviewZoom : 0
+  }
+
+  private clampReviewStart(start: number): number {
+    if (!this.review) return 0
+    return Math.max(0, Math.min(this.review.duration - this.reviewSpan, start))
+  }
+
+  private keepPlayheadVisible(): void {
+    const span = this.reviewSpan
+    if (!this.review || span >= this.review.duration) {
+      this.reviewViewStart = 0
+    } else if (this.playhead < this.reviewViewStart) {
+      this.reviewViewStart = this.playhead
+    } else if (this.playhead > this.reviewViewStart + span) {
+      this.reviewViewStart = this.playhead - span
+    }
+    this.reviewViewStart = this.clampReviewStart(this.reviewViewStart)
   }
 }
 
