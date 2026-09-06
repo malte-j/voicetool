@@ -12,8 +12,6 @@ import {
   renderKeyboard,
   setKeyState,
 } from './keyboard'
-import { HarmonicTrail, type RecordedHarmonics } from './harmonicTrail'
-import { analyzeHarmonics } from './harmonics'
 import { analyzeSong, decodeSong } from './karaoke'
 import { ONNXService } from './onnxService'
 import {
@@ -42,6 +40,7 @@ const CONFIDENCE_THRESHOLD = 0.85
 const MIN_AUDIO_SAMPLES = 256
 const DEFAULT_TARGET_HOLD_SECONDS = 2
 const INPUT_SOURCE_STORAGE_KEY = 'voicetool.inputSource'
+const MOBILE_KEYBOARD_QUERY = '(max-width: 620px)'
 
 const noteDisplayEl = document.querySelector<HTMLDivElement>('#noteDisplay')!
 const noteNameEl = document.querySelector<HTMLSpanElement>('#noteName')!
@@ -54,7 +53,6 @@ const listenBtn = document.querySelector<HTMLButtonElement>('#listenBtn')!
 const listenLabel = document.querySelector<HTMLSpanElement>('#listenLabel')!
 const inputSourceEl = document.querySelector<HTMLSelectElement>('#inputSource')!
 const trailCanvas = document.querySelector<HTMLCanvasElement>('#trail')!
-const harmonicCanvas = document.querySelector<HTMLCanvasElement>('#harmonicTrail')!
 const keyboardEl = document.querySelector<HTMLDivElement>('#keyboard')!
 const octaveDownBtn = document.querySelector<HTMLButtonElement>('#octaveDown')!
 const octaveUpBtn = document.querySelector<HTMLButtonElement>('#octaveUp')!
@@ -91,9 +89,9 @@ const onnx = new ONNXService('model.onnx')
 const capture = new AudioCapture()
 const ring = new SampleRingBuffer(TARGET_SAMPLE_RATE * 2)
 const trail = new PitchTrail(trailCanvas, 8)
-const harmonics = new HarmonicTrail(harmonicCanvas, 8)
 const synth = new Synth()
 const player = new RecordingPlayer()
+const mobileKeyboard = window.matchMedia(MOBILE_KEYBOARD_QUERY)
 
 let listening = false
 let inferTimer: number | null = null
@@ -123,6 +121,9 @@ setKeyboardOctave(keyboardOctave)
 void refreshKeyLabels()
 onKeyboardLayoutChange(() => {
   void refreshKeyLabels()
+})
+mobileKeyboard.addEventListener('change', () => {
+  setKeyboardOctave(keyboardOctave)
 })
 
 async function refreshKeyLabels(): Promise<void> {
@@ -188,13 +189,6 @@ function setTuningColor(cents: number | null): void {
   const color = tuningColor(cents)
   noteDisplayEl.style.setProperty('--note-color', color)
   centsNeedleEl.style.background = color
-}
-
-/** Counts the harmonics in the same window the pitch was read from. */
-function pushHarmonics(samples: Float32Array | null, note: DetectedNote | null): void {
-  harmonics.push(
-    samples && note ? analyzeHarmonics(samples, note.hz, TARGET_SAMPLE_RATE) : null,
-  )
 }
 
 function setVoicedUi(note: DetectedNote | null): void {
@@ -289,15 +283,9 @@ function updateTransport(): void {
   zoomInBtn.disabled = !trail.canZoomIn
 }
 
-function syncReviewViewport(): void {
-  harmonics.setReviewViewport(trail.visibleStart, trail.visibleEnd)
-}
-
 function movePlayhead(seconds: number): void {
   trail.setPlayhead(seconds)
-  syncReviewViewport()
   const at = trail.playheadSeconds
-  harmonics.setPlayhead(at)
   player.seek(at)
   showPlayheadNote(trail.pointAt(at))
   updateTransport()
@@ -305,16 +293,12 @@ function movePlayhead(seconds: number): void {
 
 function openTake(
   recording: RecordedTrail,
-  harmonicTake: RecordedHarmonics,
   kind: 'take' | 'karaoke' = 'take',
 ): void {
   reviewKind = kind
   trail.showRecording(recording)
-  harmonics.showRecording(harmonicTake)
-  syncReviewViewport()
   transportEl.hidden = false
   trailCanvas.classList.add('scrubbable')
-  harmonicCanvas.classList.add('scrubbable')
   document.body.classList.toggle('karaoke-mode', kind === 'karaoke')
   karaokeAudioControlsEl.hidden = kind !== 'karaoke'
   player.setMuted(kind === 'karaoke' && !karaokeSongPlaybackInput.checked)
@@ -329,10 +313,8 @@ function closeTake(): void {
   player.pause()
   player.unload()
   trail.closeRecording()
-  harmonics.closeRecording()
   transportEl.hidden = true
   trailCanvas.classList.remove('scrubbable')
-  harmonicCanvas.classList.remove('scrubbable')
   scrubPointer = null
   resumeAfterScrub = false
   shownPlayheadMidi = undefined
@@ -353,7 +335,6 @@ function goBack(seconds = 5): void {
 
 function zoomReview(multiplier: number): void {
   trail.setReviewZoom(trail.zoom * multiplier)
-  syncReviewViewport()
   updateTransport()
 }
 
@@ -365,7 +346,6 @@ function enableTrackpadZoom(canvas: HTMLCanvasElement): void {
     if (event.ctrlKey) {
       const delta = Math.max(-50, Math.min(50, event.deltaY))
       trail.zoomAtClientX(Math.exp(-delta * 0.02), event.clientX)
-      syncReviewViewport()
       updateTransport()
       event.preventDefault()
       return
@@ -380,7 +360,6 @@ function enableTrackpadZoom(canvas: HTMLCanvasElement): void {
         ? canvas.clientWidth
         : 1
     if (!trail.panReviewByPixels(event.deltaX * unit, canvas.clientWidth)) return
-    syncReviewViewport()
     event.preventDefault()
   }, { passive: false })
 
@@ -400,7 +379,6 @@ function enableTrackpadZoom(canvas: HTMLCanvasElement): void {
     const clientX = gesture.clientX ?? rect.left + rect.width / 2
     trail.zoomAtClientX(scale / previousGestureScale, clientX)
     previousGestureScale = scale
-    syncReviewViewport()
     updateTransport()
     event.preventDefault()
   }
@@ -440,7 +418,7 @@ async function loadKaraokeFile(file: File): Promise<void> {
     recordingDownload.hidden = true
     recordStatusEl.textContent = ''
     transportModeEl.textContent = `Karaoke · ${file.name}`
-    openTake(target, { points: [], duration: target.duration }, 'karaoke')
+    openTake(target, 'karaoke')
     karaokeStatusEl.textContent = `${file.name} ready`
     playBtn.focus()
   } catch (err) {
@@ -572,7 +550,8 @@ function setKeyboardOctave(next: number): void {
   keyboardOctave = Math.max(2, Math.min(6, next))
   octaveValueEl.textContent = String(keyboardOctave)
   const base = (keyboardOctave + 1) * 12
-  renderKeyboard(keyboardEl, 48, 84, base, keyLabels)
+  const endMidi = mobileKeyboard.matches ? 72 : 84
+  renderKeyboard(keyboardEl, 48, endMidi, base, keyLabels)
   if (targetMidi != null) {
     setKeyState(keyboardEl, targetMidi, 'target', true)
     if (targetCompleted) {
@@ -651,7 +630,6 @@ async function runInference(): Promise<void> {
 
   if (performance.now() < suppressDetectionUntil) {
     setVoicedUi(null)
-    pushHarmonics(null, null)
     trail.push(null, false)
     return
   }
@@ -660,12 +638,10 @@ async function runInference(): Promise<void> {
     const result = await onnx.runInference(normalize(window))
     if (performance.now() < suppressDetectionUntil) {
       setVoicedUi(null)
-      pushHarmonics(null, null)
       trail.push(null, false)
       return
     }
     const note = pickLatestVoiced(result.pitch_hz, result.confidence)
-    pushHarmonics(window, note)
     updateTargetProgress(note)
     setVoicedUi(note)
     if (reviewKind === 'karaoke') {
@@ -684,16 +660,13 @@ async function runInference(): Promise<void> {
 function animate(): void {
   if (trail.reviewing && player.isPlaying && scrubPointer == null) {
     trail.setPlayhead(player.currentTime)
-    syncReviewViewport()
     const at = trail.playheadSeconds
-    harmonics.setPlayhead(at)
     if (reviewKind !== 'karaoke' || !listening) {
       showPlayheadNote(trail.pointAt(at))
     }
     updateTransport()
   }
   trail.draw()
-  harmonics.draw()
   requestAnimationFrame(animate)
 }
 
@@ -704,7 +677,6 @@ async function startListening(): Promise<void> {
     if (!joiningKaraoke) closeTake()
     ring.clear()
     if (!joiningKaraoke) trail.clear()
-    harmonics.clear()
     smoothedCents = 0
     lastNote = null
     rearmTarget()
@@ -725,7 +697,6 @@ async function startListening(): Promise<void> {
     } else {
       if ('MediaRecorder' in window) capture.startRecording()
       trail.startRecording()
-      harmonics.startRecording()
     }
 
     if (inferTimer != null) window.clearInterval(inferTimer)
@@ -749,7 +720,6 @@ async function finishRecording(): Promise<void> {
   // Stop the pitch capture first so its timeline ends with the audio rather than
   // with the container's stop event.
   const take = trail.stopRecording()
-  const harmonicTake = harmonics.stopRecording()
   const recording = await capture.stopRecording()
   if (recording.size === 0 && take.duration < 0.05) return
 
@@ -779,10 +749,7 @@ async function finishRecording(): Promise<void> {
   }
 
   const duration = Math.max(audioSeconds, take.duration)
-  openTake(
-    { points: take.points, playedNotes: take.playedNotes, duration },
-    { points: harmonicTake.points, duration },
-  )
+  openTake({ points: take.points, playedNotes: take.playedNotes, duration })
 }
 
 async function stopListening(): Promise<void> {
@@ -981,14 +948,11 @@ closeTakeBtn.addEventListener('click', closeTake)
 
 player.onEnded = () => {
   trail.setPlayhead(trail.duration)
-  syncReviewViewport()
   const at = trail.playheadSeconds
-  harmonics.setPlayhead(at)
   showPlayheadNote(trail.pointAt(at))
   updateTransport()
 }
 
-/** Both scopes share one playhead, so either can be dragged to move the take. */
 function enableScrubbing(
   canvas: HTMLCanvasElement,
   timeAtClientX: (clientX: number) => number,
@@ -1027,9 +991,7 @@ function enableScrubbing(
 }
 
 enableScrubbing(trailCanvas, (clientX) => trail.timeAtClientX(clientX))
-enableScrubbing(harmonicCanvas, (clientX) => harmonics.timeAtClientX(clientX))
 enableTrackpadZoom(trailCanvas)
-enableTrackpadZoom(harmonicCanvas)
 holdSecondsInput.addEventListener('change', () => {
   const seconds = targetHoldSeconds()
   holdSecondsInput.value = String(seconds)
@@ -1055,14 +1017,9 @@ new ResizeObserver(() => {
   trail.resize()
 }).observe(trailCanvas)
 
-new ResizeObserver(() => {
-  harmonics.resize()
-}).observe(harmonicCanvas)
-
 // Backing store scale depends on devicePixelRatio, which the observer does not track.
 window.addEventListener('resize', () => {
   trail.resize()
-  harmonics.resize()
 })
 
 async function boot(): Promise<void> {
