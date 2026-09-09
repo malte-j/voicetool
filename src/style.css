@@ -621,6 +621,7 @@ body.karaoke-mode .trail {
 }
 
 .instrument-settings,
+.scale-control,
 .hold-control,
 .monitor-control,
 .mic-gain-control {
@@ -630,6 +631,27 @@ body.karaoke-mode .trail {
 
 .instrument-settings {
     gap: 14px;
+}
+
+.scale-control {
+    gap: 5px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+}
+
+.scale-control select {
+    height: 20px;
+    padding: 0 18px 0 5px;
+    color: var(--text);
+    background: var(--titlebar);
+    border: 1px solid var(--border-soft);
+    border-radius: 2px;
+    font: 500 11px/1 var(--font);
+}
+
+.scale-control select:disabled {
+    color: var(--text-faint);
+    opacity: 0.65;
 }
 
 .hold-control {
@@ -702,6 +724,7 @@ body.karaoke-mode .trail {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font: inherit;
     min-width: 38px;
     height: 31px;
     padding: 0;
@@ -855,6 +878,14 @@ body.karaoke-mode .trail {
     background: #2e2e2e;
 }
 
+.key.white.out-of-scale {
+    background: #b8b8b8;
+}
+
+.key.black.out-of-scale {
+    background: #686868;
+}
+
 .keys-black {
     position: absolute;
     /* Inset by the frame so this layer shares the white row's box and the black
@@ -929,13 +960,12 @@ body.karaoke-mode .trail {
 
 .instrument-credit {
     position: absolute;
-    left: 50%;
-    top: 50%;
+    top: 8px;
+    right: 8px;
     margin: 0;
-    transform: translate(-50%, -50%);
     color: var(--text-faint);
     font-size: 10px;
-    text-align: center;
+    text-align: right;
     pointer-events: none;
 }
 
@@ -1023,25 +1053,15 @@ kbd {
         gap: 8px;
     }
 
-    .instrument-credit {
-        position: static;
-        left: auto;
-        top: auto;
-        transform: none;
-        width: 100%;
-        max-width: 100%;
-        padding: 2px 0 0;
-        order: 2;
-    }
-
     .instrument-footer {
         flex-wrap: wrap;
         row-gap: 8px;
         order: 1;
     }
 
-    .instrument-credit p {
-        overflow-wrap: anywhere;
+    .instrument-settings {
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
     .shortcut-label {

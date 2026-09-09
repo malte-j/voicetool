@@ -126,7 +126,6 @@
             <div class="instrument-controls device">
               <p class="target-status" id="targetStatus"></p>
               <div class="instrument-credit">
-                <p>voicetool by <a href="https://malte.ws">malte</a></p>
                 <p>
                   <a href="https://github.com/lars76/swift-f0/">voice detection using SwiftF0 by Lars Nieradzik</a>
                 </p>
@@ -135,6 +134,35 @@
                 <p class="keyboard-help"><kbd>Z</kbd>/<kbd>X</kbd> octave</p>
                 <p class="record-status" id="recordStatus"></p>
                 <div class="instrument-settings">
+                  <div class="scale-control" role="group" aria-label="Scale">
+                    <select id="scaleRoot" aria-label="Scale root" disabled>
+                      <option value="0">C</option>
+                      <option value="1">C♯</option>
+                      <option value="2">D</option>
+                      <option value="3">D♯</option>
+                      <option value="4">E</option>
+                      <option value="5">F</option>
+                      <option value="6">F♯</option>
+                      <option value="7">G</option>
+                      <option value="8">G♯</option>
+                      <option value="9">A</option>
+                      <option value="10">A♯</option>
+                      <option value="11">B</option>
+                    </select>
+                    <select id="scaleType" aria-label="Scale type">
+                      <option value="">No scale</option>
+                      <option value="major">Major</option>
+                      <option value="dorian">Dorian</option>
+                      <option value="phrygian">Phrygian</option>
+                      <option value="lydian">Lydian</option>
+                      <option value="mixolydian">Mixolydian</option>
+                      <option value="naturalMinor">Natural minor</option>
+                      <option value="locrian">Locrian</option>
+                      <option value="harmonicMinor">Harmonic minor</option>
+                      <option value="majorPentatonic">Major pentatonic</option>
+                      <option value="minorPentatonic">Minor pentatonic</option>
+                    </select>
+                  </div>
                   <label class="hold-control">
                     Hold
                     <input type="number" id="holdSeconds" min="0.5" max="10" step="0.5" value="2" aria-label="Seconds to hold target note">

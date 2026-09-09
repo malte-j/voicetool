@@ -75,6 +75,7 @@ const MIN_REVIEW_WINDOW_SEC = 2
 const PERFORMANCE_OVERWRITE_SEC = 0.1
 /** Do not join performance readings across a seek or separate listening pass. */
 const PERFORMANCE_JOIN_MAX_SEC = 0.25
+const SCALE_ROW_FILL = 'rgba(72, 139, 214, 0.16)'
 
 /** Canvas pitch trail rendered in MIDI space over a rolling time window. */
 export class PitchTrail {
@@ -111,6 +112,7 @@ export class PitchTrail {
   private playhead = 0
   private reviewZoom = 1
   private reviewViewStart = 0
+  private scalePitchClasses: Set<number> | null = null
 
   constructor(canvas: HTMLCanvasElement, windowSec = 8) {
     const ctx = canvas.getContext('2d')
@@ -128,6 +130,10 @@ export class PitchTrail {
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.dpr))
     this.canvas.height = Math.max(1, Math.floor(rect.height * this.dpr))
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+  }
+
+  setScale(pitchClasses: ReadonlySet<number> | null): void {
+    this.scalePitchClasses = pitchClasses ? new Set(pitchClasses) : null
   }
 
   /**
@@ -746,6 +752,16 @@ export class PitchTrail {
       if (!ACCIDENTALS.has(((m % 12) + 12) % 12)) continue
       const top = midiToY(m + 0.5, yMin, yMax, h)
       ctx.fillRect(0, top, w, rowPx)
+    }
+
+    if (this.scalePitchClasses) {
+      ctx.fillStyle = SCALE_ROW_FILL
+      for (let m = low; m <= high; m++) {
+        const pitchClass = ((m % 12) + 12) % 12
+        if (!this.scalePitchClasses.has(pitchClass)) continue
+        const top = midiToY(m + 0.5, yMin, yMax, h)
+        ctx.fillRect(0, top, w, rowPx)
+      }
     }
 
     ctx.lineWidth = 1

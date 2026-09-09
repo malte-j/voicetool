@@ -11,6 +11,7 @@ import {
   onKeyboardLayoutChange,
   renderKeyboard,
   setKeyState,
+  showScaleOnKeyboard,
 } from './keyboard'
 import { analyzeSong, decodeSong } from './karaoke'
 import { ONNXService } from './onnxService'
@@ -24,6 +25,7 @@ import {
   type DetectedNote,
 } from './pitch'
 import { RecordingPlayer } from './playback'
+import { scalePitchClasses, type ScaleType } from './scale'
 import { Synth } from './synth'
 import {
   PitchTrail,
@@ -84,6 +86,8 @@ const karaokeSongPlaybackInput = document.querySelector<HTMLInputElement>('#kara
 const karaokeFileEl = document.querySelector<HTMLInputElement>('#karaokeFile')!
 const karaokeUploadEl = document.querySelector<HTMLLabelElement>('#karaokeUpload')!
 const karaokeStatusEl = document.querySelector<HTMLParagraphElement>('#karaokeStatus')!
+const scaleRootEl = document.querySelector<HTMLSelectElement>('#scaleRoot')!
+const scaleTypeEl = document.querySelector<HTMLSelectElement>('#scaleType')!
 
 const onnx = new ONNXService('model.onnx')
 const capture = new AudioCapture()
@@ -115,6 +119,7 @@ const heldPointerNotes = new Set<number>()
 const playedNoteOrder: number[] = []
 const keyboardHelpEl = document.querySelector<HTMLParagraphElement>('.keyboard-help')!
 let keyLabels = DEFAULT_CODE_LABELS
+let selectedScale: Set<number> | null = null
 
 // Also seeds the scope viewport and the octave readout for the default octave.
 setKeyboardOctave(keyboardOctave)
@@ -552,6 +557,7 @@ function setKeyboardOctave(next: number): void {
   const base = (keyboardOctave + 1) * 12
   const endMidi = mobileKeyboard.matches ? 72 : 84
   renderKeyboard(keyboardEl, 48, endMidi, base, keyLabels)
+  showScaleOnKeyboard(keyboardEl, selectedScale)
   if (targetMidi != null) {
     setKeyState(keyboardEl, targetMidi, 'target', true)
     if (targetCompleted) {
@@ -562,6 +568,16 @@ function setKeyboardOctave(next: number): void {
   }
   // Keep the scope looking at the octave you can play.
   trail.setOctave(base)
+}
+
+function updateScale(): void {
+  const type = scaleTypeEl.value
+  scaleRootEl.disabled = !type
+  selectedScale = type
+    ? scalePitchClasses(Number(scaleRootEl.value), type as ScaleType)
+    : null
+  showScaleOnKeyboard(keyboardEl, selectedScale)
+  trail.setScale(selectedScale)
 }
 
 function normalize(samples: Float32Array): Float32Array {
@@ -887,6 +903,8 @@ keyboardEl.addEventListener('pointerup', releasePointerNote)
 keyboardEl.addEventListener('pointercancel', releasePointerNote)
 octaveDownBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave - 1))
 octaveUpBtn.addEventListener('click', () => setKeyboardOctave(keyboardOctave + 1))
+scaleRootEl.addEventListener('change', updateScale)
+scaleTypeEl.addEventListener('change', updateScale)
 monitorInput.addEventListener('change', () => {
   capture.setMonitoring(monitorInput.checked)
   karaokeMicPlaybackInput.checked = monitorInput.checked

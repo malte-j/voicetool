@@ -18,6 +18,9 @@ export const KEYBOARD_STEPS: Record<string, number> = {
   KeyU: 10,
   KeyJ: 11,
   KeyK: 12,
+  KeyO: 13,
+  KeyL: 14,
+  KeyP: 15,
 }
 
 export const OCTAVE_DOWN_CODE = 'KeyZ'
@@ -38,6 +41,9 @@ export const DEFAULT_CODE_LABELS: Record<string, string> = {
   KeyU: 'U',
   KeyJ: 'J',
   KeyK: 'K',
+  KeyO: 'O',
+  KeyL: 'L',
+  KeyP: 'P',
   KeyZ: 'Z',
   KeyX: 'X',
 }
@@ -167,4 +173,17 @@ export function highlightDetectedKey(container: HTMLElement, midi: number | null
     el.classList.remove('detected')
   })
   if (midi != null) setKeyState(container, midi, 'detected', true)
+}
+
+/** Dims pitches outside the selected scale without changing which keys are playable. */
+export function showScaleOnKeyboard(
+  container: HTMLElement,
+  pitchClasses: ReadonlySet<number> | null,
+): void {
+  container.querySelectorAll<HTMLElement>('.key[data-midi]').forEach((key) => {
+    const midi = Number(key.dataset.midi)
+    const inScale = pitchClasses?.has(((midi % 12) + 12) % 12) ?? false
+    key.classList.toggle('in-scale', pitchClasses != null && inScale)
+    key.classList.toggle('out-of-scale', pitchClasses != null && !inScale)
+  })
 }
