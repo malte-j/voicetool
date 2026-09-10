@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "voice",
+  "short_name": "voice",
+  "description": "Practice singing with live pitch detection, a piano-roll trail, and target-note exercises.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#a8a8a8",
+  "theme_color": "#a8a8a8",
+  "categories": ["music", "education"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

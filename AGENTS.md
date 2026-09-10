@@ -1,10 +1,16 @@
 # Project summary
 
-Voicetool is a browser-based singing practice app built with TypeScript and Vite.
+`voice` is a browser-based singing practice app built with TypeScript and Vite.
 It uses the microphone and a SwiftF0 ONNX model for live pitch detection, displays
 notes on a piano-roll trail and keyboard, and includes target-note exercises. Each
 listening session is recorded automatically and can be reviewed with synchronized
 audio, a full pitch trail, and a scrubbable playhead.
+
+# Development
+
+The user needs a running development server to see and review the app. When making
+user-visible changes, start `npm run dev` and leave the server running so the app is
+available for preview.
 
 # Deployment
 

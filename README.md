@@ -1,6 +1,6 @@
 > **Disclaimer:** This project is 100% AI-generated.
 
-# Voicetool
+# voice
 
 Interactive browser app that detects musical notes as you sing — powered by [SwiftF0](https://github.com/lars76/swift-f0) running client-side via ONNX Runtime Web.
 
@@ -12,6 +12,12 @@ npm run dev
 ```
 
 Open the printed localhost URL, click **Start listening**, allow the microphone, and sing.
+
+## Install the app
+
+Open the deployed site in a PWA-capable browser and choose **Install app** (or
+**Add to Home Screen** on iOS). The installed app runs in its own window and,
+after the first successful load, can start without a network connection.
 
 ## Play the synth
 

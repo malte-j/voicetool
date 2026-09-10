@@ -44,6 +44,14 @@ const DEFAULT_TARGET_HOLD_SECONDS = 2
 const INPUT_SOURCE_STORAGE_KEY = 'voicetool.inputSource'
 const MOBILE_KEYBOARD_QUERY = '(max-width: 620px)'
 
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/service-worker.js').catch((error: unknown) => {
+      console.warn('Could not enable offline mode.', error)
+    })
+  })
+}
+
 const noteDisplayEl = document.querySelector<HTMLDivElement>('#noteDisplay')!
 const noteNameEl = document.querySelector<HTMLSpanElement>('#noteName')!
 const noteHzEl = document.querySelector<HTMLSpanElement>('#noteHz')!
@@ -745,7 +753,7 @@ async function finishRecording(): Promise<void> {
     recordingUrl = URL.createObjectURL(recording)
     recordingDownload.href = recordingUrl
     recordingDownload.download =
-      `voicetool-${new Date().toISOString().replaceAll(':', '-')}.${recording.type.includes('mp4') ? 'm4a' : 'webm'}`
+      `voice-${new Date().toISOString().replaceAll(':', '-')}.${recording.type.includes('mp4') ? 'm4a' : 'webm'}`
     recordingDownload.hidden = false
 
     try {
