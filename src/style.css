@@ -277,6 +277,7 @@ button:focus-visible {
 .listen-controls {
     position: relative;
     display: flex;
+    align-items: stretch;
     gap: 0;
     flex: 0 1 auto;
     margin: 0;
@@ -285,6 +286,7 @@ button:focus-visible {
 .input-source {
     position: relative;
     width: 180px;
+    height: 31px;
     min-width: 0;
     flex: 0 1 180px;
 }
@@ -346,8 +348,9 @@ button:focus-visible {
     justify-content: center;
     gap: 7px;
     flex: 0 0 auto;
+    height: 31px;
     margin: 0;
-    padding: 7px 10px;
+    padding: 0 10px;
     cursor: pointer;
     font: inherit;
     color: #fff;
@@ -623,6 +626,7 @@ body.karaoke-mode .trail {
 .instrument-settings,
 .scale-control,
 .hold-control,
+.target-feedback-control,
 .monitor-control,
 .mic-gain-control {
     display: flex;
@@ -660,7 +664,8 @@ body.karaoke-mode .trail {
     letter-spacing: 0.04em;
 }
 
-.monitor-control {
+.monitor-control,
+.target-feedback-control {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -683,7 +688,16 @@ body.karaoke-mode .trail {
         color 0.12s ease;
 }
 
-.monitor-control input {
+.target-feedback-control {
+    width: 24px;
+    height: 20px;
+    min-height: 20px;
+    color: var(--text);
+    background: var(--titlebar);
+}
+
+.monitor-control input,
+.target-feedback-control input {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -694,22 +708,30 @@ body.karaoke-mode .trail {
     white-space: nowrap;
 }
 
-.monitor-icon {
+.monitor-icon,
+.target-feedback-icon {
     display: block;
     width: 15px;
     height: 15px;
     color: var(--text);
 }
 
-.monitor-control:hover {
+.monitor-control:hover,
+.target-feedback-control:hover {
     background: #e2e2e2;
 }
 
-.monitor-control:has(input:focus-visible) {
+.target-feedback-control:not(:has(input:checked)):hover {
+    background: #bababa;
+}
+
+.monitor-control:has(input:focus-visible),
+.target-feedback-control:has(input:focus-visible) {
     box-shadow: 0 0 0 1px var(--text-dim);
 }
 
-.monitor-control:has(input:checked) {
+.monitor-control:has(input:checked),
+.target-feedback-control:has(input:checked) {
     color: var(--text);
     background: var(--accent);
 }
@@ -804,7 +826,10 @@ body.karaoke-mode .trail {
 }
 
 .octave-control button {
-    width: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
     height: 20px;
     padding: 0;
     cursor: pointer;
@@ -813,6 +838,12 @@ body.karaoke-mode .trail {
     border: 1px solid var(--border-soft);
     border-radius: 2px;
     font: 500 13px/1 var(--font);
+}
+
+.octave-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
 }
 
 .octave-control button:hover {
@@ -1038,7 +1069,6 @@ kbd {
     .input-source {
         width: auto;
         flex: 1 1 auto;
-        border: solid var(--border-soft);
     }
 
     .capture-bar > .karaoke-upload {

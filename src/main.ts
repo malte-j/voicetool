@@ -42,6 +42,7 @@ const CONFIDENCE_THRESHOLD = 0.85
 const MIN_AUDIO_SAMPLES = 256
 const DEFAULT_TARGET_HOLD_SECONDS = 2
 const INPUT_SOURCE_STORAGE_KEY = 'voicetool.inputSource'
+const TARGET_FEEDBACK_STORAGE_KEY = 'voicetool.targetFeedback'
 const MOBILE_KEYBOARD_QUERY = '(max-width: 620px)'
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -69,6 +70,7 @@ const octaveUpBtn = document.querySelector<HTMLButtonElement>('#octaveUp')!
 const octaveValueEl = document.querySelector<HTMLElement>('#octaveValue')!
 const targetStatusEl = document.querySelector<HTMLParagraphElement>('#targetStatus')!
 const holdSecondsInput = document.querySelector<HTMLInputElement>('#holdSeconds')!
+const targetFeedbackInput = document.querySelector<HTMLInputElement>('#targetFeedbackInput')!
 const monitorInput = document.querySelector<HTMLInputElement>('#monitorInput')!
 const micGainControlEl = document.querySelector<HTMLDivElement>('#micGainControl')!
 const micGainButton = document.querySelector<HTMLButtonElement>('#micGainButton')!
@@ -129,6 +131,9 @@ const keyboardHelpEl = document.querySelector<HTMLParagraphElement>('.keyboard-h
 let keyLabels = DEFAULT_CODE_LABELS
 let selectedScale: Set<number> | null = null
 
+targetFeedbackInput.checked = savedTargetFeedback()
+holdSecondsInput.disabled = !targetFeedbackInput.checked
+
 // Also seeds the scope viewport and the octave readout for the default octave.
 setKeyboardOctave(keyboardOctave)
 void refreshKeyLabels()
@@ -170,6 +175,22 @@ function saveInputSource(deviceId: string): void {
   try {
     if (deviceId) localStorage.setItem(INPUT_SOURCE_STORAGE_KEY, deviceId)
     else localStorage.removeItem(INPUT_SOURCE_STORAGE_KEY)
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function savedTargetFeedback(): boolean {
+  try {
+    return localStorage.getItem(TARGET_FEEDBACK_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+function saveTargetFeedback(enabled: boolean): void {
+  try {
+    localStorage.setItem(TARGET_FEEDBACK_STORAGE_KEY, String(enabled))
   } catch {
     // Storage can be unavailable in private or restricted browser contexts.
   }
@@ -459,6 +480,7 @@ function targetHoldSeconds(): number {
 }
 
 function targetPrompt(midi: number): string {
+  if (!targetFeedbackInput.checked) return `Target ${targetName(midi)}`
   return `Target ${targetName(midi)} · sing and hold for ${targetHoldSeconds().toFixed(1)}s`
 }
 
@@ -488,7 +510,7 @@ function rearmTarget(): void {
 }
 
 function updateTargetProgress(note: DetectedNote | null): void {
-  if (targetMidi == null || trail.reviewing) return
+  if (targetMidi == null || trail.reviewing || !targetFeedbackInput.checked) return
 
   const targetIsPlaying =
     heldPointerNotes.has(targetMidi) ||
@@ -1021,6 +1043,12 @@ enableTrackpadZoom(trailCanvas)
 holdSecondsInput.addEventListener('change', () => {
   const seconds = targetHoldSeconds()
   holdSecondsInput.value = String(seconds)
+  rearmTarget()
+  if (targetMidi != null) targetStatusEl.textContent = targetPrompt(targetMidi)
+})
+targetFeedbackInput.addEventListener('change', () => {
+  saveTargetFeedback(targetFeedbackInput.checked)
+  holdSecondsInput.disabled = !targetFeedbackInput.checked
   rearmTarget()
   if (targetMidi != null) targetStatusEl.textContent = targetPrompt(targetMidi)
 })
