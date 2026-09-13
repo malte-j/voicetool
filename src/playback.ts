@@ -20,10 +20,14 @@ export class RecordingPlayer {
 
   onEnded: (() => void) | null = null
 
+  async decode(blob: Blob): Promise<AudioBuffer> {
+    const context = this.ensureContext()
+    return context.decodeAudioData(await blob.arrayBuffer())
+  }
+
   async load(blob: Blob): Promise<number> {
     this.stopSource()
-    const context = this.ensureContext()
-    return this.loadBuffer(await context.decodeAudioData(await blob.arrayBuffer()))
+    return this.loadBuffer(await this.decode(blob))
   }
 
   loadBuffer(buffer: AudioBuffer): number {

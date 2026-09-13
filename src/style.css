@@ -39,6 +39,7 @@ body {
     color: var(--text);
     background: var(--desk);
     overflow-x: hidden;
+    user-select: none;
 }
 
 #app {
@@ -240,9 +241,11 @@ button:focus-visible {
 .karaoke-upload {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     height: 31px;
+    min-width: 126px;
     padding: 0 10px;
-    cursor: pointer;
+    cursor: default;
     color: var(--text);
     background: var(--display);
     border: 1px solid var(--border-soft);
@@ -250,12 +253,12 @@ button:focus-visible {
     white-space: nowrap;
 }
 
-.karaoke-upload:hover {
+.karaoke-upload:not(.busy):hover {
     background: #e2e2e2;
 }
 
 .karaoke-upload.busy {
-    cursor: wait;
+    cursor: default;
     opacity: 0.6;
 }
 
@@ -351,7 +354,7 @@ button:focus-visible {
     height: 31px;
     margin: 0;
     padding: 0 10px;
-    cursor: pointer;
+    cursor: default;
     font: inherit;
     color: #fff;
     background: var(--rec);
@@ -370,7 +373,7 @@ button:focus-visible {
 
 .listen:disabled {
     opacity: 0.45;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .listen.active {
@@ -423,7 +426,7 @@ button:focus-visible {
 
 /* Only while scrubbing, so the tall canvas never swallows page scroll on touch. */
 .trail.scrubbable {
-    cursor: ew-resize;
+    cursor: default;
     touch-action: none;
 }
 
@@ -449,7 +452,7 @@ button:focus-visible {
     gap: 6px;
     height: 22px;
     padding: 0 9px;
-    cursor: pointer;
+    cursor: default;
     color: var(--text);
     background: var(--surface-hi);
     border: 1px solid var(--border-soft);
@@ -463,14 +466,14 @@ button:focus-visible {
 }
 
 .transport-button:disabled {
-    cursor: not-allowed;
+    cursor: default;
     opacity: 0.45;
 }
 
 .transport-button {
     height: 22px;
     padding: 0 9px;
-    cursor: pointer;
+    cursor: default;
     color: var(--text);
     background: var(--surface-hi);
     border: 1px solid var(--border-soft);
@@ -479,7 +482,7 @@ button:focus-visible {
 }
 
 .transport-play:disabled {
-    cursor: not-allowed;
+    cursor: default;
     opacity: 0.45;
 }
 
@@ -556,7 +559,7 @@ button:focus-visible {
     align-items: center;
     gap: 4px;
     color: var(--text-dim);
-    cursor: pointer;
+    cursor: default;
 }
 
 .karaoke-audio-controls input {
@@ -574,15 +577,31 @@ body.karaoke-mode .trail {
     font-size: 10px;
 }
 
+body.karaoke-mode .transport-close {
+    margin-left: auto;
+}
+
 .transport-close {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     height: 22px;
     padding: 0 9px;
-    cursor: pointer;
+    cursor: default;
     color: var(--text);
     background: var(--surface-hi);
     border: 1px solid var(--border-soft);
     border-radius: 2px;
     font: inherit;
+}
+
+.transport-exit-icon {
+    display: none;
+    flex: none;
+}
+
+body.karaoke-mode .transport-exit-icon {
+    display: block;
 }
 
 .transport-close:hover {
@@ -675,7 +694,7 @@ body.karaoke-mode .trail {
     height: 31px;
     min-height: 31px;
     padding: 0;
-    cursor: pointer;
+    cursor: default;
     color: var(--text-dim);
     background: var(--display);
     border: 1px solid var(--border-soft);
@@ -750,7 +769,7 @@ body.karaoke-mode .trail {
     min-width: 38px;
     height: 31px;
     padding: 0;
-    cursor: pointer;
+    cursor: default;
     color: var(--text-dim);
     background: var(--display);
     border: solid var(--border-soft);
@@ -832,7 +851,7 @@ body.karaoke-mode .trail {
     width: 20px;
     height: 20px;
     padding: 0;
-    cursor: pointer;
+    cursor: default;
     color: var(--text);
     background: var(--titlebar);
     border: 1px solid var(--border-soft);
@@ -884,7 +903,7 @@ body.karaoke-mode .trail {
     padding: 0;
     margin: 0;
     position: relative;
-    cursor: pointer;
+    cursor: default;
     touch-action: none;
 }
 
@@ -1021,6 +1040,12 @@ body.karaoke-mode .trail {
     font-variant-numeric: tabular-nums;
 }
 
+.target-status:empty,
+.karaoke-status:empty,
+.record-status:empty {
+    display: none;
+}
+
 kbd {
     padding: 0 4px;
     font: inherit;
@@ -1095,6 +1120,11 @@ kbd {
     }
 
     .shortcut-label {
+        display: none;
+    }
+
+    .keyboard-help,
+    .instrument-credit {
         display: none;
     }
 

@@ -26,7 +26,7 @@
             <p class="karaoke-status" id="karaokeStatus" role="status"></p>
             <label class="karaoke-upload" id="karaokeUpload">
               <input type="file" id="karaokeFile" accept="audio/mpeg,audio/mp3,.mp3" disabled>
-              <span>load vocal sample</span>
+              <span id="karaokeUploadLabel">load vocal sample</span>
             </label>
 
             <label class="monitor-control" title="monitor audio">
@@ -96,7 +96,12 @@
                 </label>
               </div>
               <a id="recordingDownload" class="transport-link" download>Download</a>
-              <button type="button" id="closeTakeBtn" class="transport-close">Back to live</button>
+              <button type="button" id="closeTakeBtn" class="transport-close">
+                <svg class="transport-exit-icon" width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M3 1C2.44772 1 2 1.44772 2 2V13C2 13.5523 2.44772 14 3 14H8C8.55228 14 9 13.5523 9 13V9.5C9 9.22386 8.77614 9 8.5 9C8.22386 9 8 9.22386 8 9.5V13H3V2H8V5.5C8 5.77614 8.22386 6 8.5 6C8.77614 6 9 5.77614 9 5.5V2C9 1.44772 8.55228 1 8 1H3ZM11.1464 4.14645C11.3417 3.95118 11.6583 3.95118 11.8536 4.14645L14.8536 7.14645C15.0488 7.34171 15.0488 7.65829 14.8536 7.85355L11.8536 10.8536C11.6583 11.0488 11.3417 11.0488 11.1464 10.8536C10.9512 10.6583 10.9512 10.3417 11.1464 10.1464L13.2929 8H6.5C6.22386 8 6 7.77614 6 7.5C6 7.22386 6.22386 7 6.5 7H13.2929L11.1464 4.85355C10.9512 4.65829 10.9512 4.34171 11.1464 4.14645Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"/>
+                </svg>
+                <span id="closeTakeLabel">Back to live</span>
+              </button>
             </div>
             <canvas id="trail" class="trail" width="1200" height="320"></canvas>
           </div>

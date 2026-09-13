@@ -14,6 +14,7 @@ import {
   showScaleOnKeyboard,
 } from './keyboard'
 import { analyzeSong, decodeSong } from './karaoke'
+import { encodeMp3 } from './mp3'
 import { ONNXService } from './onnxService'
 import {
   MODEL_FMAX,
@@ -85,6 +86,7 @@ const playBtn = document.querySelector<HTMLButtonElement>('#playBtn')!
 const playLabel = document.querySelector<HTMLSpanElement>('#playLabel')!
 const transportTimeEl = document.querySelector<HTMLSpanElement>('#transportTime')!
 const closeTakeBtn = document.querySelector<HTMLButtonElement>('#closeTakeBtn')!
+const closeTakeLabelEl = document.querySelector<HTMLSpanElement>('#closeTakeLabel')!
 const backBtn = document.querySelector<HTMLButtonElement>('#backBtn')!
 const zoomOutBtn = document.querySelector<HTMLButtonElement>('#zoomOutBtn')!
 const zoomInBtn = document.querySelector<HTMLButtonElement>('#zoomInBtn')!
@@ -95,6 +97,7 @@ const karaokeMicPlaybackInput = document.querySelector<HTMLInputElement>('#karao
 const karaokeSongPlaybackInput = document.querySelector<HTMLInputElement>('#karaokeSongPlayback')!
 const karaokeFileEl = document.querySelector<HTMLInputElement>('#karaokeFile')!
 const karaokeUploadEl = document.querySelector<HTMLLabelElement>('#karaokeUpload')!
+const karaokeUploadLabelEl = document.querySelector<HTMLSpanElement>('#karaokeUploadLabel')!
 const karaokeStatusEl = document.querySelector<HTMLParagraphElement>('#karaokeStatus')!
 const scaleRootEl = document.querySelector<HTMLSelectElement>('#scaleRoot')!
 const scaleTypeEl = document.querySelector<HTMLSelectElement>('#scaleType')!
@@ -336,7 +339,7 @@ function openTake(
   document.body.classList.toggle('karaoke-mode', kind === 'karaoke')
   karaokeAudioControlsEl.hidden = kind !== 'karaoke'
   player.setMuted(kind === 'karaoke' && !karaokeSongPlaybackInput.checked)
-  closeTakeBtn.textContent = kind === 'karaoke' ? 'Exit karaoke' : 'Back to live'
+  closeTakeLabelEl.textContent = kind === 'karaoke' ? 'exit karaoke' : 'Back to live'
   shownPlayheadMidi = undefined
   showPlayheadNote(trail.pointAt(0))
   updateTransport()
@@ -356,7 +359,7 @@ function closeTake(): void {
   document.body.classList.remove('karaoke-mode')
   karaokeAudioControlsEl.hidden = true
   transportModeEl.textContent = ''
-  closeTakeBtn.textContent = 'Back to live'
+  closeTakeLabelEl.textContent = 'Back to live'
   recordStatusEl.textContent = ''
   lastNote = null
   holdUntil = 0
@@ -423,8 +426,10 @@ function enableTrackpadZoom(canvas: HTMLCanvasElement): void {
 async function loadKaraokeFile(file: File): Promise<void> {
   const job = ++karaokeJob
   karaokeUploadEl.classList.add('busy')
+  karaokeUploadEl.setAttribute('aria-disabled', 'true')
+  karaokeUploadLabelEl.textContent = '0%'
   karaokeFileEl.disabled = true
-  karaokeStatusEl.textContent = `Decoding ${file.name}…`
+  karaokeStatusEl.textContent = ''
 
   try {
     if (listening) await stopListening()
@@ -434,14 +439,13 @@ async function loadKaraokeFile(file: File): Promise<void> {
     const decoded = await decodeSong(file)
     if (job !== karaokeJob) return
 
-    karaokeStatusEl.textContent = 'Analyzing vocals… 0%'
     const target = await analyzeSong(
       decoded.samples16k,
       decoded.buffer.duration,
       (audio) => onnx.runInference(audio),
       (ratio) => {
         if (job === karaokeJob) {
-          karaokeStatusEl.textContent = `Analyzing vocals… ${Math.round(ratio * 100)}%`
+          karaokeUploadLabelEl.textContent = `${Math.round(ratio * 100)}%`
         }
       },
     )
@@ -453,7 +457,7 @@ async function loadKaraokeFile(file: File): Promise<void> {
     recordStatusEl.textContent = ''
     transportModeEl.textContent = `Karaoke · ${file.name}`
     openTake(target, 'karaoke')
-    karaokeStatusEl.textContent = `${file.name} ready`
+    karaokeStatusEl.textContent = ''
     playBtn.focus()
   } catch (err) {
     if (job !== karaokeJob) return
@@ -464,6 +468,8 @@ async function loadKaraokeFile(file: File): Promise<void> {
   } finally {
     if (job === karaokeJob) {
       karaokeUploadEl.classList.remove('busy')
+      karaokeUploadEl.removeAttribute('aria-disabled')
+      karaokeUploadLabelEl.textContent = 'load vocal sample'
       karaokeFileEl.disabled = false
       karaokeFileEl.value = ''
     }
@@ -771,17 +777,27 @@ async function finishRecording(): Promise<void> {
 
   let audioSeconds = 0
   if (recording.size > 0) {
-    if (recordingUrl) URL.revokeObjectURL(recordingUrl)
-    recordingUrl = URL.createObjectURL(recording)
-    recordingDownload.href = recordingUrl
-    recordingDownload.download =
-      `voice-${new Date().toISOString().replaceAll(':', '-')}.${recording.type.includes('mp4') ? 'm4a' : 'webm'}`
-    recordingDownload.hidden = false
+    recordingDownload.hidden = true
+    recordStatusEl.textContent = 'Preparing MP3…'
 
     try {
-      audioSeconds = await player.load(recording)
+      const decodedRecording = await player.decode(recording)
+      audioSeconds = player.loadBuffer(decodedRecording)
       playBtn.disabled = false
-      recordStatusEl.textContent = ''
+
+      try {
+        const mp3 = await encodeMp3(decodedRecording)
+        if (recordingUrl) URL.revokeObjectURL(recordingUrl)
+        recordingUrl = URL.createObjectURL(mp3)
+        recordingDownload.href = recordingUrl
+        recordingDownload.download =
+          `voice-${new Date().toISOString().replaceAll(':', '-')}.mp3`
+        recordingDownload.hidden = false
+        recordStatusEl.textContent = ''
+      } catch (err) {
+        console.error(err)
+        recordStatusEl.textContent = 'Playback available, but MP3 export failed'
+      }
     } catch (err) {
       console.error(err)
       player.unload()

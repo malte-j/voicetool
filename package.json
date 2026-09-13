@@ -9,13 +9,15 @@
     "preview": "vite preview",
     "postinstall": "node scripts/copy-ort-assets.mjs",
     "predev": "node scripts/copy-ort-assets.mjs",
-    "prebuild": "node scripts/copy-ort-assets.mjs"
+    "prebuild": "node scripts/copy-ort-assets.mjs",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "onnxruntime-web": "^1.27.0"
   },
   "description": "Live singing note detector powered by SwiftF0"
