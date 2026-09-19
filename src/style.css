@@ -60,7 +60,11 @@ button:focus {
 }
 
 button:focus-visible {
-    box-shadow: 0 0 0 1px var(--text-dim);
+    outline: none;
+}
+
+select:focus-visible {
+    outline: none;
 }
 
 /* ---------- Stage layout ---------- */

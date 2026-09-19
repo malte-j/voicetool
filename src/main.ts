@@ -122,6 +122,9 @@ let targetHeldSince: number | null = null
 let targetCompleted = false
 let suppressDetectionUntil = 0
 let recordingUrl: string | null = null
+let recordingExportBuffer: AudioBuffer | null = null
+let recordingExportGeneration = 0
+let recordingExporting = false
 let scrubPointer: number | null = null
 let resumeAfterScrub = false
 let shownPlayheadMidi: number | null | undefined
@@ -347,6 +350,7 @@ function openTake(
 
 function closeTake(): void {
   if (!trail.reviewing) return
+  const closingRecordedTake = reviewKind === 'take'
   player.pause()
   player.unload()
   trail.closeRecording()
@@ -364,6 +368,7 @@ function closeTake(): void {
   lastNote = null
   holdUntil = 0
   setVoicedUi(null)
+  if (closingRecordedTake) resetRecordingExport()
 }
 
 function goBack(seconds = 5): void {
@@ -774,30 +779,16 @@ async function finishRecording(): Promise<void> {
   const take = trail.stopRecording()
   const recording = await capture.stopRecording()
   if (recording.size === 0 && take.duration < 0.05) return
+  resetRecordingExport()
 
   let audioSeconds = 0
   if (recording.size > 0) {
-    recordingDownload.hidden = true
-    recordStatusEl.textContent = 'Preparing MP3…'
-
     try {
       const decodedRecording = await player.decode(recording)
       audioSeconds = player.loadBuffer(decodedRecording)
       playBtn.disabled = false
-
-      try {
-        const mp3 = await encodeMp3(decodedRecording)
-        if (recordingUrl) URL.revokeObjectURL(recordingUrl)
-        recordingUrl = URL.createObjectURL(mp3)
-        recordingDownload.href = recordingUrl
-        recordingDownload.download =
-          `voice-${new Date().toISOString().replaceAll(':', '-')}.mp3`
-        recordingDownload.hidden = false
-        recordStatusEl.textContent = ''
-      } catch (err) {
-        console.error(err)
-        recordStatusEl.textContent = 'Playback available, but MP3 export failed'
-      }
+      recordingExportBuffer = decodedRecording
+      recordingDownload.hidden = false
     } catch (err) {
       console.error(err)
       player.unload()
@@ -812,6 +803,54 @@ async function finishRecording(): Promise<void> {
 
   const duration = Math.max(audioSeconds, take.duration)
   openTake({ points: take.points, playedNotes: take.playedNotes, duration })
+}
+
+function resetRecordingExport(): void {
+  recordingExportGeneration++
+  recordingExportBuffer = null
+  recordingExporting = false
+  if (recordingUrl) URL.revokeObjectURL(recordingUrl)
+  recordingUrl = null
+  recordingDownload.removeAttribute('href')
+  recordingDownload.removeAttribute('download')
+  recordingDownload.textContent = 'Download'
+  recordingDownload.hidden = true
+}
+
+async function downloadRecording(): Promise<void> {
+  const buffer = recordingExportBuffer
+  if (!buffer || recordingExporting) return
+
+  const generation = recordingExportGeneration
+  recordingExporting = true
+  recordingDownload.textContent = 'Encoding…'
+  recordStatusEl.textContent = 'Preparing MP3…'
+
+  try {
+    const mp3 = await encodeMp3(buffer)
+    if (generation !== recordingExportGeneration || buffer !== recordingExportBuffer) return
+
+    recordingUrl = URL.createObjectURL(mp3)
+    const filename = `voice-${new Date().toISOString().replaceAll(':', '-')}.mp3`
+    recordingDownload.href = recordingUrl
+    recordingDownload.download = filename
+    recordStatusEl.textContent = ''
+
+    const download = document.createElement('a')
+    download.href = recordingUrl
+    download.download = filename
+    download.click()
+  } catch (err) {
+    console.error(err)
+    if (generation === recordingExportGeneration) {
+      recordStatusEl.textContent = 'MP3 export failed'
+    }
+  } finally {
+    if (generation === recordingExportGeneration) {
+      recordingExporting = false
+      recordingDownload.textContent = 'Download'
+    }
+  }
 }
 
 async function stopListening(): Promise<void> {
@@ -835,6 +874,15 @@ async function stopListening(): Promise<void> {
 listenBtn.addEventListener('click', () => {
   if (listening) void stopListening()
   else void startListening()
+})
+
+// Pointer-operated buttons should not retain keyboard ownership afterward.
+// Native selects need to retain focus through their click lifecycle to open reliably.
+// Keyboard users can still reach and operate buttons normally with Tab.
+document.addEventListener('click', (event) => {
+  if (!(event.target instanceof Element)) return
+  const control = event.target.closest<HTMLButtonElement>('button')
+  control?.blur()
 })
 
 inputSourceEl.addEventListener('change', () => {
@@ -885,7 +933,6 @@ window.addEventListener('keydown', (event) => {
     event.ctrlKey ||
     event.altKey ||
     event.target instanceof HTMLInputElement ||
-    event.target instanceof HTMLSelectElement ||
     event.target instanceof HTMLTextAreaElement
   ) {
     return
@@ -991,6 +1038,12 @@ micGainInput.addEventListener('input', () => {
 playBtn.addEventListener('click', () => {
   player.toggle()
   updateTransport()
+})
+recordingDownload.addEventListener('click', (event) => {
+  // Once generated, the link behaves normally and reuses the same MP3.
+  if (recordingUrl) return
+  event.preventDefault()
+  void downloadRecording()
 })
 backBtn.addEventListener('click', () => goBack())
 zoomOutBtn.addEventListener('click', () => zoomReview(0.5))
